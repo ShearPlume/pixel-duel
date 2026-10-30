@@ -1,0 +1,25 @@
+# Godot 4 generated cache
+.godot/
+.import/
+
+# Build output
+exports/
+dist/
+build/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local temp
+*.log
+*.tmp
+
+# Binary export artifacts
+*.exe
+*.dll
+*.pck
+*.wasm
+*.zip
