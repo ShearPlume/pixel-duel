@@ -18,6 +18,7 @@
 - 本机**没有 Python**，有 Node 24（`node -v`）。本地开 HTTP 服务统一用 `serve.js`，不要写 `python -m http.server`。
 ## 2. 启动方式
 
+
 ```powershell
 # 创建工程与主场景之后
 & "D:\Users\y00866000\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe" --path C:\Users\y00866000.CHINA\PycharmProjects\pixel-duel
