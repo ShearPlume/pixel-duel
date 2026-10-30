@@ -1,0 +1,7 @@
+{
+  "name": "my-fighter",
+  "displayName": "示例角色",
+  "description": "Q版像素风少年拳手，黑色短发，红色头巾，白色无袖上衣，深蓝色长裤，黑色腰封，赤脚缠白色绷带，粗黑描边，平涂上色",
+  "quality": "medium",
+  "chroma_key": "#FF00FF"
+}

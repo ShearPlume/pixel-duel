@@ -1,4 +1,4 @@
-# Godot 4 generated cache
+﻿# Godot 4 generated cache
 .godot/
 .import/
 
@@ -23,3 +23,12 @@ Thumbs.db
 *.pck
 *.wasm
 *.zip
+
+# Generated frame pipeline intermediates
+.frames/
+
+# Derived sprite output (keep only spritesheet + atlas.json + char.json)
+art/placeholder/*/frames/
+art/placeholder/*/previews/
+art/placeholder/*/spritesheet.webp
+art/placeholder/*/spritesheet.webp.import

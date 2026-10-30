@@ -1,0 +1,112 @@
+{
+  "cell": [192, 208],
+  "columns": 8,
+  "feet_margin": 12,
+  "facing": "right",
+  "chroma_default": "#FF00FF",
+  "states": [
+    {
+      "name": "idle",
+      "row": 0,
+      "frames": 6,
+      "fps": 10,
+      "action": "calm fighting stance idle loop: subtle breathing, small weight shift, fists up, feet planted",
+      "requirements": [
+        "keep the guard stance and facing right in every frame",
+        "feet stay planted on the same ground line",
+        "first and last frame nearly identical so the loop does not pop"
+      ]
+    },
+    {
+      "name": "walk",
+      "row": 1,
+      "frames": 8,
+      "fps": 12,
+      "action": "walking forward to the right loop, clear alternating steps, guard kept up",
+      "requirements": [
+        "unmistakably faces and travels right",
+        "alternate the stride across the 8 frames, no repeated frame",
+        "no speed lines, dust, shadows or motion trails"
+      ]
+    },
+    {
+      "name": "walk-back",
+      "row": 2,
+      "frames": 8,
+      "fps": 12,
+      "mirror_of": "walk",
+      "action": "",
+      "requirements": []
+    },
+    {
+      "name": "crouch",
+      "row": 3,
+      "frames": 3,
+      "fps": 12,
+      "action": "crouching: knees bent, body lowered to roughly two thirds of standing height, guard in front",
+      "requirements": [
+        "same facing right and same ground line",
+        "body clearly and consistently lower than the idle stance",
+        "no attack, no jump"
+      ]
+    },
+    {
+      "name": "jump",
+      "row": 4,
+      "frames": 5,
+      "fps": 12,
+      "action": "jump: crouch anticipation, takeoff, airborne peak with legs tucked, descent, landing",
+      "requirements": [
+        "vertical motion only through pose and body height",
+        "no shadow, no dust, no landing marks"
+      ]
+    },
+    {
+      "name": "attack-light",
+      "row": 5,
+      "frames": 4,
+      "fps": 30,
+      "action": "straight jab with the lead hand: wind-up, arm extended at full reach, slight follow-through, return to stance",
+      "requirements": [
+        "the punching arm must clearly reach furthest on frame 3 of 4",
+        "the body axis and both feet stay in the same place in every frame",
+        "no impact effects, no motion lines, no comic symbols"
+      ]
+    },
+    {
+      "name": "attack-heavy",
+      "row": 6,
+      "frames": 4,
+      "fps": 24,
+      "action": "heavy overhand punch: big wind-up, full body rotation, arm swung down and forward, recovery",
+      "requirements": [
+        "the striking hand is furthest forward and lowest on frame 3 of 4",
+        "the body axis and both feet stay in the same place in every frame",
+        "no impact effects, no motion lines, no comic symbols"
+      ]
+    },
+    {
+      "name": "kick",
+      "row": 7,
+      "frames": 4,
+      "fps": 24,
+      "action": "front kick: chamber the knee, extend the leg forward at hip height, retract back to stance",
+      "requirements": [
+        "the kicking foot is furthest forward on frame 3 of 4",
+        "the supporting foot stays on the same ground line in every frame",
+        "no impact effects, no motion lines"
+      ]
+    },
+    {
+      "name": "hurt",
+      "row": 8,
+      "frames": 3,
+      "fps": 20,
+      "action": "taking a hit: head snapped back, torso leaning away, arms loose, then settling",
+      "requirements": [
+        "same facing right, feet near the same ground line",
+        "no blood, no impact sparks, no detached effects"
+      ]
+    }
+  ]
+}
