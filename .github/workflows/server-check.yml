@@ -1,4 +1,4 @@
-name: Server check
+﻿name: Server check
 
 # Manual diagnostics for the deploy box: SSH account, Godot + web templates,
 # coscmd profile, the site directory and the nginx route used by the existing
@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '43.153.223.229' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'deploy' }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
@@ -52,3 +52,4 @@ jobs:
           else
             ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE"
           fi
+

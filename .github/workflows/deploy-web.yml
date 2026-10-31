@@ -5,8 +5,8 @@
 # bucket. First run clones the repo, later runs just fetch/reset.
 #
 # Repository secrets / variables:
-#   DEPLOY_HOST      43.153.223.229                     (secret)
-#   DEPLOY_USER      deploy                             (secret)
+#   DEPLOY_HOST      43.153.223.229  (default, override with a secret)
+#   DEPLOY_USER      deploy          (default, override with a secret)
 #   DEPLOY_SSH_KEY   private key matching authorized_keys (secret, preferred)
 #   DEPLOY_PASSWORD  account password when no key is used (secret, optional)
 #   DEPLOY_ROOT      /home/deploy/build                 (variable, optional)
@@ -30,8 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      # Non-secret defaults: only a key or password has to be stored.
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '43.153.223.229' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'deploy' }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
@@ -114,5 +115,6 @@ jobs:
           done
           echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
           exit 1
+
 
 
