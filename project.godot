@@ -222,6 +222,11 @@ p5_ranged={
 ]
 }
 
+[audio]
+
+driver/output_latency=15
+driver/output_latency.web=15
+
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0

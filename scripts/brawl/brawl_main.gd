@@ -464,6 +464,33 @@ func _apply_fx(event: Dictionary) -> void:
 			burst.filled = bool(event.get("fl", true))
 			burst.position = at
 			add_child(burst)
+		"cake":
+			var icon: AtlasTexture = ItemArt.texture_for("grenade")
+			var node: CanvasItem
+			if icon != null:
+				var sprite := Sprite2D.new()
+				sprite.texture = icon
+				sprite.scale = Vector2(0.5, 0.5)
+				node = sprite
+			else:
+				var block := ColorRect.new()
+				block.color = Color("ffd166")
+				block.size = Vector2(14.0, 14.0)
+				node = block
+			add_child(node)
+			_guest_bullets.append({
+				"node": node,
+				"x": at.x,
+				"y": at.y,
+				"vx": float(event.get("vx", 0.0)),
+				"vy": float(event.get("vy", 0.0)),
+				"g": float(event.get("g", 900.0)),
+				"b": float(event.get("b", 0.5)),
+				"w": 0.0,
+				"wr": 6.0,
+				"life": float(event.get("l", 1.0)),
+				"age": 0.0,
+			})
 		"shot":
 			var node := ShotVisual.new()
 			node.kind = String(event.get("s", "bullet"))
@@ -1071,6 +1098,11 @@ func _throw_grenade(index: int, config: Dictionary, ratio: float = 0.0) -> void:
 		node = block
 	add_child(node)
 	var from: Vector2 = brawler.muzzle_point()
+	_send_fx({"k": "cake", "x": from.x, "y": from.y,
+		"vx": float(brawler.facing) * float(config["speed"]) * (1.0 + 1.1 * ratio),
+		"vy": float(config["throw_vy"]) * (1.0 + 0.5 * ratio),
+		"g": float(config["gravity"]), "b": float(config["bounce"]),
+		"l": float(config["fuse"])})
 	bullets.append({
 		"type": "grenade",
 		"node": node,
