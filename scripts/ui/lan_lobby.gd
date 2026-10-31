@@ -11,6 +11,7 @@ const MatchConfig = preload("res://scripts/match_config.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
 const Portrait = preload("res://scripts/ui/portrait.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
+const NativeInput = preload("res://scripts/ui/native_input.gd")
 
 const CHARACTER_NAMES := ["Yoru", "Nayu", "Hanami", "Kana", "Mosaki"]
 const CHARACTERS := ["res://art/yoru", "res://art/nayu", "res://art/hanami", "res://art/kana", "res://art/mosaki"]
@@ -37,6 +38,8 @@ var _answer_edit: LineEdit
 var _create_account_button: Button
 var _pick_label: Label
 var _my_pick := 0
+## Phone keyboard bridge for the text fields.
+var _native: Node
 ## slot -> character index, filled by the host from everyone's pick.
 var _picks := {}
 
@@ -52,6 +55,10 @@ func _ready() -> void:
 		position = Vector2.ZERO
 		size = design
 		Portrait.backdrop(self, design)
+	_native = NativeInput.new()
+	add_child(_native)
+	for field: LineEdit in [_url_edit, _name_edit, _question_edit, _answer_edit]:
+		_native.attach(field)
 	_connect_relay(NetClient.default_url())
 
 
@@ -253,6 +260,7 @@ func _show_login() -> void:
 
 
 func _on_login() -> void:
+	_native.close()
 	if _pending_name != "":
 		net.answer(_pending_name, _answer_edit.text)
 		return
@@ -264,6 +272,7 @@ func _on_login() -> void:
 
 
 func _on_show_register() -> void:
+	_native.close()
 	_pending_name = ""
 	_question_edit.visible = true
 	_answer_edit.visible = true
@@ -274,6 +283,7 @@ func _on_show_register() -> void:
 
 
 func _on_register() -> void:
+	_native.close()
 	net.register(_name_edit.text.strip_edges(), _question_edit.text.strip_edges(), _answer_edit.text.strip_edges())
 
 
@@ -400,6 +410,7 @@ func _pick(delta: int) -> void:
 
 
 func _on_start() -> void:
+	_native.close()
 	if MatchConfig.lan_slot != 0 or net == null:
 		return
 	net.send_data({"t": "start", "picks": _picks})
@@ -435,15 +446,18 @@ func _filled_slots() -> int:
 
 
 func _on_create() -> void:
+	_native.close()
 	_status.text = "正在创建房间…"
 	net.create_room("P1")
 
 
 func _on_refresh() -> void:
+	_native.close()
 	net.list_rooms()
 
 
 func _on_leave() -> void:
+	_native.close()
 	_in_room = false
 	_show_menu()
 	_connect_relay(_url_edit.text)
@@ -459,6 +473,7 @@ func _show_menu() -> void:
 
 
 func _on_back() -> void:
+	_native.close()
 	MatchConfig.clear_lan()
 	get_tree().change_scene_to_file("res://scenes/select.tscn")
 
