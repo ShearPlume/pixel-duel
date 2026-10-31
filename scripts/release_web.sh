@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Build the web export on the deploy server and publish it to the game bucket.
 # Mirrors the proven sunset-summit-duel release flow: content-hashed version
 # directory, entry page uploaded last so a refresh never sees a half copy.

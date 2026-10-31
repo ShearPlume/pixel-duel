@@ -1,17 +1,14 @@
-﻿#!/usr/bin/env bash
-# One-shot server provisioning for the pixel-duel web deploy.
+#!/usr/bin/env bash
+# One-shot server provisioning / inspection for the pixel-duel web deploy.
 #
-# Run as root on 43.153.223.229:
+# Run as root on the deploy host:
 #     bash scripts/ops/provision_server.sh            # inspect only
-#     bash scripts/ops/provision_server.sh --apply    # also add /idolbrawl/ route + nav
+#     bash scripts/ops/provision_server.sh --apply    # also add the GAME nav tab
 #
-# What it does:
-#   1. installs the CI deploy public key for the `deploy` account
-#   2. prints a compact report of Godot / templates / coscmd / site / nginx
-#   3. with --apply: adds an nginx `location /idolbrawl/` cloned from the
-#      existing /minigame/ route, then reloads nginx if `nginx -t` passes
-#   4. with --apply: adds a GAME tab to the site nav when a plain
-#      `<a href="/minigame/">` anchor can be found
+# The site is a Nuxt app served without nginx, so this script never touches a
+# web server config: it installs the CI deploy key, prints what the host
+# actually has, and (with --apply) clones the existing /minigame/ nav entry into
+# an /idolbrawl/ one.
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
@@ -26,131 +23,88 @@ APPLY=0
 section() { echo; echo "== $* =="; }
 
 section "deploy key"
-install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
-touch "/home/$DEPLOY_USER/.ssh/authorized_keys"
-chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
-chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
-if grep -q "pixel-duel-deploy" "/home/$DEPLOY_USER/.ssh/authorized_keys"; then
-  echo "already installed"
+if ! id "$DEPLOY_USER" >/dev/null 2>&1; then
+  echo "NO SUCH USER: $DEPLOY_USER"
 else
-  echo "$PUBLIC_KEY" >> "/home/$DEPLOY_USER/.ssh/authorized_keys"
-  echo "installed"
+  install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
+  touch "/home/$DEPLOY_USER/.ssh/authorized_keys"
+  chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
+  chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
+  if grep -q "pixel-duel-deploy" "/home/$DEPLOY_USER/.ssh/authorized_keys"; then
+    echo "already installed"
+  else
+    echo "$PUBLIC_KEY" >> "/home/$DEPLOY_USER/.ssh/authorized_keys"
+    echo "installed"
+  fi
+  echo "keys: $(wc -l < "/home/$DEPLOY_USER/.ssh/authorized_keys")"
 fi
-echo "keys: $(wc -l < "/home/$DEPLOY_USER/.ssh/authorized_keys")"
 
 section "build environment"
 ls -d "$DEPLOY_ROOT" 2>/dev/null || echo "MISSING $DEPLOY_ROOT"
-ls -1 "$DEPLOY_ROOT/tools" 2>/dev/null | head -5 || echo "MISSING $DEPLOY_ROOT/tools"
+ls -1 "$DEPLOY_ROOT/tools" 2>/dev/null | head -5 || true
 ls -1 "$DEPLOY_ROOT/xdg/data/godot/export_templates" 2>/dev/null || echo "MISSING templates"
 command -v coscmd || echo "MISSING coscmd"
 ls -l "/home/$DEPLOY_USER/.cos-minigame.conf" 2>/dev/null || echo "MISSING cos-minigame.conf"
-command -v python3 git nginx
 
-section "site"
-ls -1 "$SITE_ROOT" 2>/dev/null | head -25 || echo "MISSING $SITE_ROOT"
-echo "html files:"
-grep -rl --include='*.html' --include='*.php' --include='*.ejs' --include='*.hbs' "$OLD_PATH" "$SITE_ROOT" 2>/dev/null | head -10 || true
+section "server stack"
+command -v nginx caddy httpd traefik 2>/dev/null || echo "no nginx/caddy/traefik on PATH"
+(ss -ltnp 2>/dev/null | head -15) || true
+(systemctl list-units --type=service --state=running 2>/dev/null | grep -Ei "nuxt|node|pm2|caddy|nginx|traefik|duel" | head -10) || true
+(pm2 ls 2>/dev/null | head -10) || true
 
-section "nginx routes"
-nginx -T 2>/dev/null | grep -nE "configuration file|listen |server_name|location |proxy_pass|root |alias " | head -80 || echo "nginx -T failed"
+section "site layout"
+ls -1 "$SITE_ROOT" 2>/dev/null | head -25
+echo "-- app/"
+ls -1 "$SITE_ROOT/app" 2>/dev/null | head -20
+echo "-- public/"
+ls -1 "$SITE_ROOT/public" 2>/dev/null | head -20
+echo "-- nuxt.config.ts"
+sed -n '1,80p' "$SITE_ROOT/nuxt.config.ts" 2>/dev/null || echo "no nuxt.config.ts"
+echo "-- minigame references"
+grep -rn --include='*.vue' --include='*.ts' --include='*.js' --include='*.mjs' -l "$OLD_PATH" "$SITE_ROOT/app" "$SITE_ROOT/server" "$SITE_ROOT/public" 2>/dev/null | head -10 || true
 
 if [ "$APPLY" = "1" ]; then
-  section "patch nginx"
-  python3 - "$OLD_PATH" "$NEW_PATH" <<'PY'
-import pathlib, re, shutil, subprocess, sys, time
-
-old, new = sys.argv[1], sys.argv[2]
-dump = subprocess.run(["nginx", "-T"], capture_output=True, text=True).stdout
-current = None
-owner = None
-block = None
-for line in dump.splitlines():
-    m = re.match(r"# configuration file (\S+):", line)
-    if m:
-        current = m.group(1)
-        continue
-    if current and re.search(r"^\s*location\s+(\^~\s*)?%s/?\s*\{" % re.escape(old), line):
-        owner = current
-        break
-
-if not owner:
-    print("no location /%s/ found; add the route by hand" % old)
-    raise SystemExit(0)
-
-text = pathlib.Path(owner).read_text()
-if f"location /{new}/" in text or f"location ^~ /{new}/" in text:
-    print(f"already patched: {owner}")
-    raise SystemExit(0)
-
-lines = text.splitlines(keepends=True)
-start = None
-for i, line in enumerate(lines):
-    if re.search(r"^\s*location\s+(\^~\s*)?%s/?\s*\{" % re.escape(old), line):
-        start = i
-        break
-if start is None:
-    print(f"location line vanished in {owner}")
-    raise SystemExit(0)
-
-depth = 0
-end = None
-for i in range(start, len(lines)):
-    depth += lines[i].count("{") - lines[i].count("}")
-    if depth == 0:
-        end = i
-        break
-if end is None:
-    print(f"unbalanced block in {owner}")
-    raise SystemExit(1)
-
-block = "".join(lines[start:end + 1]).replace(old, new)
-indent = re.match(r"\s*", lines[start]).group(0)
-block = "\n".join(indent + l.strip() if l.strip() else l for l in block.splitlines())
-backup = f"{owner}.bak.{time.strftime('%Y%m%d%H%M%S')}"
-shutil.copy2(owner, backup)
-merged = "".join(lines[:end + 1]) + block + "\n" + "".join(lines[end + 1:])
-pathlib.Path(owner).write_text(merged)
-check = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
-if check.returncode != 0:
-    shutil.copy2(backup, owner)
-    print("nginx -t failed, reverted:", check.stderr.strip()[:300])
-    raise SystemExit(1)
-subprocess.run(["systemctl", "reload", "nginx"], check=True)
-print(f"added location /{new}/ in {owner} (backup {backup})")
-PY
-
-  section "patch site nav"
-  python3 - "$NEW_PATH" "$OLD_PATH" "$SITE_ROOT" <<'PY'
+  section "patch nav"
+  python3 - "$OLD_PATH" "$NEW_PATH" "$SITE_ROOT" <<'PY'
 import pathlib, re, sys
 
-new, old, site = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+old, new, site = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
 if not site.exists():
     print("site dir missing")
     raise SystemExit(0)
 
-pattern = re.compile(r'<a\b[^>]*href="(/|\b)(?:%s)[^"]*"[^>]*>.*?</a>' % re.escape(old), re.S | re.I)
+# Match <a href="/minigame...">, <NuxtLink to="/minigame..."> or a bare href.
+patterns = [
+    re.compile(r'<a\b[^>]*href="(?:/|\b)%s[^"]*"[^>]*>.*?</a>' % re.escape(old), re.S | re.I),
+    re.compile(r'<NuxtLink\b[^>]*to="(?:/|\b)%s[^"]*"[^>]*>.*?</NuxtLink>' % re.escape(old), re.S | re.I),
+]
 done = False
-for html in sorted(site.rglob("*.html")):
-    if "node_modules" in html.parts:
+for source in sorted(list(site.rglob("*.vue")) + list(site.rglob("*.ts")) + list(site.rglob("*.html"))):
+    parts = set(source.parts)
+    if "node_modules" in parts or ".nuxt" in parts or ".output" in parts:
         continue
-    text = html.read_text(errors="replace")
-    if f"/{new}" in text:
+    text = source.read_text(errors="replace")
+    if f'/{new}' in text:
         continue
-    match = pattern.search(text)
-    if not match:
-        continue
-    tag = match.group(0)
-    clone = tag.replace(old, new, 1)
-    clone = re.sub(r">.*<", ">IDOL BRAWL<", clone, count=1, flags=re.S)
-    html.write_text(text[:match.end()] + "\n" + clone + text[match.end():])
-    print(f"nav updated: {html}")
-    done = True
+    for pattern in patterns:
+        match = pattern.search(text)
+        if not match:
+            continue
+        tag = match.group(0)
+        clone = tag.replace(old, new, 1)
+        if "<a" in tag[:3].lower():
+            clone = re.sub(r'>.*<', '>IDOL BRAWL<', clone, count=1, flags=re.S)
+        source.write_text(text[:match.end()] + "\n" + clone + text[match.end():])
+        print(f"nav updated: {source}")
+        done = True
+        break
+    if done:
+        break
 if not done:
-    print("no plain <a href=.../minigame...> anchor found; nav needs a manual edit")
+    print("no /minigame/ nav link found in app/, server/ or public/; nav needs a manual edit")
 PY
 fi
 
 section "next"
-echo "CI: push to main, or Actions > Deploy web > Run workflow"
 echo "URL: https://mirugumi.space/$NEW_PATH/"
-
+echo "if the host has no reverse proxy, the game build has to land in $SITE_ROOT/public/$NEW_PATH/"
