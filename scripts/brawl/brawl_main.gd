@@ -112,6 +112,9 @@ var _guest_bullets: Array = []
 ## Latest host position of every other player, smoothed every frame so guests
 ## see the same motion the host does instead of 30 Hz stepping.
 var _net_targets := {}
+var _net_prev := {}
+var _net_age := 0.0
+var _net_step := 1.0 / 60.0
 ## In LAN the host runs its own input a few ticks late, about the delay a guest
 ## gets from the round trip, so nobody gets a timing advantage.
 const HOST_INPUT_DELAY := 17
@@ -353,21 +356,23 @@ func _process(delta: float) -> void:
 	_update_hud()
 
 
-## Frame-rate smoothing for the players the guest does not simulate.
+## Frame-rate interpolation for the players the guest does not simulate: the
+## render position catches up with each packet over exactly one packet interval.
 func _smooth_remote_players(delta: float) -> void:
 	if _net_targets.is_empty():
 		return
-	var weight := 1.0 - exp(-delta * 18.0)
+	_net_age = minf(_net_age + delta, _net_step * 2.0)
+	var weight := clampf(_net_age / _net_step, 0.0, 1.0)
 	for index: int in _net_targets.keys():
 		if index == lan_slot or index >= brawlers.size():
 			continue
 		var brawler: Node2D = brawlers[index]
+		var from: Vector2 = _net_prev.get(index, _net_targets[index])
 		var target: Vector2 = _net_targets[index]
-		var gap := brawler.position.distance_to(target)
-		if gap > 180.0:
+		if from.distance_to(target) > 200.0:
 			brawler.position = target
 		else:
-			brawler.position = brawler.position.lerp(target, weight)
+			brawler.position = from.lerp(target, weight)
 
 ## Stage gimmicks need motion to read: hazard vents throb, belts scroll their
 ## chevrons, bounce pads breathe.
@@ -417,7 +422,8 @@ func _step_fixed() -> void:
 		for brawler: Node2D in brawlers:
 			if brawler.alive:
 				brawler.step(FIXED_DT, {}, Stage.PLATFORMS)
-	if lan_role == "host" and net != null and ticks % SNAPSHOT_EVERY == 0:
+	var every := 1 if (link != null and link.is_p2p()) else 2
+	if lan_role == "host" and net != null and ticks % every == 0:
 		_send_snapshot()
 
 ## Keep every screen identical: whatever the host spawns or plays is mirrored
@@ -668,6 +674,29 @@ func _predict_local() -> void:
 	_apply_gimmicks(brawler)
 	brawler.step(FIXED_DT, command, Stage.PLATFORMS)
 	_bounce(brawler)
+	_separate_predicted()
+
+
+## The host pushes fighters apart every tick; the guest has to do the same
+## for its own fighter or it keeps sliding into the opponent and getting yanked
+## back by the correction.
+func _separate_predicted() -> void:
+	if lan_slot < 0 or lan_slot >= brawlers.size():
+		return
+	var me: Node2D = brawlers[lan_slot]
+	if not me.alive:
+		return
+	for index in range(brawlers.size()):
+		if index == lan_slot:
+			continue
+		var other: Node2D = brawlers[index]
+		if not other.alive:
+			continue
+		var corrected := Pushbox.separate(me.position.x, me.position.y,
+			other.position.x, other.position.y)
+		if corrected.is_empty():
+			continue
+		me.position.x = corrected[0]
 
 
 func _apply_snapshot() -> void:
@@ -685,14 +714,22 @@ func _apply_snapshot() -> void:
 			# what made it feel like drifting, so only hard events (a hit, a big
 			# mismatch such as a respawn or a platform the guest missed) snap it.
 			var error := brawler.position.distance_to(target)
-			var struck := bool(entry[12])
-			if struck or error > 60.0:
+			var struck: bool = bool(entry[12]) and float(brawler.hitstun) <= 0.0
+			if struck or error > 150.0:
+				# A hit lands or the two worlds really disagree (respawn, fall
+				# through a platform): accept the host state wholesale.
 				brawler.position = target
 				brawler.vel = Vector2(float(entry[3]), float(entry[4]))
-			elif error > 6.0:
-				brawler.position += (target - brawler.position) * 0.05
+			elif error > 4.0:
+				# Otherwise pull 4% per snapshot: invisible at 60 Hz, and it keeps
+				# the two simulations from slowly separating.
+				brawler.position += (target - brawler.position) * 0.04
 		else:
+			# Interpolate between the position we are drawing and the new one, so
+			# the other player glides instead of stepping at the packet rate.
+			_net_prev[index] = brawler.position
 			_net_targets[index] = target
+			_net_age = 0.0
 			brawler.vel = Vector2(float(entry[3]), float(entry[4]))
 		brawler.facing = int(entry[5])
 		brawler.on_ground = bool(entry[6])
