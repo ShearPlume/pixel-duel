@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Build the web export on the deploy server and publish it to the game bucket.
 # Mirrors the proven sunset-summit-duel release flow: content-hashed version
 # directory, entry page uploaded last so a refresh never sees a half copy.
 #
 #   bash scripts/release_web.sh                # build + upload
 #   SKIP_BUILD=1 bash scripts/release_web.sh   # re-upload the existing build
-#   PUBLIC_BASE=/minigame/pixel-duel/ bash scripts/release_web.sh
+#   PUBLIC_BASE=https://mirugumi.space/idolbrawl/ bash scripts/release_web.sh
 #
 # Requires on the server: Godot 4.6.3 + export templates (XDG_DATA_HOME) and a
 # coscmd profile for the mirror bucket (default ~/.cos-minigame.conf).
@@ -20,8 +20,8 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$BUILD_ROOT/xdg/cache}"
 export PYTHONUTF8=1
 
 COSCONF="${COS_CONF:-$HOME/.cos-minigame.conf}"
-BUCKET_PATH="${BUCKET_PATH:-/minigame/pixel-duel}"
-PUBLIC_BASE="${PUBLIC_BASE:-https://mirugumi.space/minigame/pixel-duel/}"
+BUCKET_PATH="${BUCKET_PATH:-/idolbrawl}"
+PUBLIC_BASE="${PUBLIC_BASE:-https://mirugumi.space/idolbrawl/}"
 
 cd "$ROOT"
 
@@ -77,3 +77,4 @@ coscmd -c "$COSCONF" upload -f build/deploy/index.html "$BUCKET_PATH/index.html"
 echo "    uploaded; entry page now points at $REV"
 echo "REVISION=$REV"
 echo "PUBLIC_URL=$PUBLIC_BASE"
+

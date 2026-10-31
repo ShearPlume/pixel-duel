@@ -35,8 +35,10 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
-      PUBLIC_BASE: ${{ vars.PUBLIC_BASE || 'https://mirugumi.space/minigame/pixel-duel/' }}
+      PUBLIC_BASE: ${{ vars.PUBLIC_BASE || 'https://mirugumi.space/idolbrawl/' }}
       SKIP_BUILD: ${{ inputs.skip_build && '1' || '0' }}
+      GODOT_BIN: ${{ vars.GODOT_BIN }}
+      XDG_DATA_HOME_OVERRIDE: ${{ vars.XDG_DATA_HOME }}
     steps:
       - name: Check deploy settings
         run: |
@@ -84,7 +86,7 @@ jobs:
             git fetch --prune origin
             git reset --hard origin/main
             git clean -fd
-            PUBLIC_BASE=$PUBLIC_BASE SKIP_BUILD=$SKIP_BUILD bash scripts/release_web.sh"
+            PUBLIC_BASE='$PUBLIC_BASE' SKIP_BUILD=$SKIP_BUILD GODOT_BIN='$GODOT_BIN' XDG_DATA_HOME='$XDG_DATA_HOME_OVERRIDE' bash scripts/release_web.sh"
           if [ -n "$USE_SSHPASS" ]; then
             OUT=$(sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
           else
@@ -112,4 +114,5 @@ jobs:
           done
           echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
           exit 1
+
 

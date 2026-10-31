@@ -1,8 +1,8 @@
 name: Server check
 
-# Manual diagnostics for the deploy box: verifies the SSH account, the Godot
-# binary + web templates, the coscmd profile and where the site lives. Run it
-# from the Actions tab before trusting the deploy workflow.
+# Manual diagnostics for the deploy box: SSH account, Godot + web templates,
+# coscmd profile, the site directory and the nginx route used by the existing
+# minigame. Run this from the Actions tab before trusting the deploy workflow.
 on:
   workflow_dispatch:
 
@@ -37,14 +37,16 @@ jobs:
       - name: Inspect
         run: |
           set -e
-          REMOTE='echo "== whoami =="; whoami; id
+          REMOTE='echo "== account =="; whoami; id
             echo "== deploy root =="; ls -la '"$DEPLOY_ROOT"' 2>&1 | head -20
             echo "== godot =="; ls -la '"$DEPLOY_ROOT"'/tools 2>&1 | head -10
             echo "== templates =="; ls '"$DEPLOY_ROOT"'/xdg/data/godot/export_templates 2>&1
             echo "== coscmd =="; which coscmd; ls -l ~/.cos-minigame.conf 2>&1
             echo "== tools =="; which git godot python3 node nginx 2>&1
-            echo "== site =="; ls -la /home/admin/mirugumi.space 2>&1 | head -25
-            echo "== nginx minigame/game =="; (nginx -T 2>/dev/null || sudo -n nginx -T 2>/dev/null) | grep -nE "server_name|location .*(minigame|game)" | head -40'
+            echo "== sudo =="; sudo -n true 2>&1 && echo SUDO_PASSWORDLESS || echo SUDO_NEEDS_PASSWORD
+            echo "== site dir =="; ls -la /home/admin/mirugumi.space 2>&1 | head -30
+            echo "== nginx files =="; ls /etc/nginx/conf.d /etc/nginx/sites-enabled 2>&1
+            echo "== nginx routes =="; (nginx -T 2>/dev/null || sudo -n nginx -T 2>/dev/null) | grep -nE "listen|server_name|location |proxy_pass|root |alias " | head -80'
           if [ -n "$USE_SSHPASS" ]; then
             sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE"
           else
