@@ -57,7 +57,7 @@ func _ready() -> void:
 		position.y = Portrait.menu_offset(design)
 	for i in range(MAX_PLAYERS):
 		_slots.append({
-			"joined": i < MIN_PLAYERS,
+			"joined": i == 0,
 			"index": i % CHARACTERS.size(),
 			"ready": false,
 			"cpu": false,
@@ -197,6 +197,7 @@ func _process(delta: float) -> void:
 			_slots[0]["ready"] = false
 			_sfx.play_ui("select_move")
 			_refresh()
+			_update_prompt()
 		_update_start(delta)
 		return
 	var changed := false
@@ -267,16 +268,19 @@ func _refresh() -> void:
 		var slot: Dictionary = _slots[p]
 		var tag: Label = _tags[p]
 		var state: Label = _states[p]
-		tag.visible = bool(slot["joined"])
+		# While the opponent is being picked it is shown even though the slot is
+		# not a player yet.
+		var preview_enemy := _picking_enemy and p == 1
+		tag.visible = bool(slot["joined"]) or preview_enemy
 		state.visible = bool(slot["joined"])
-		if not bool(slot["joined"]):
+		if not bool(slot["joined"]) and not preview_enemy:
 			continue
 		var x := _card_x(int(slot["index"]))
-		tag.text = "对手" if bool(slot.get("cpu", false)) else "P%d" % (p + 1)
+		tag.text = "对手" if bool(slot.get("cpu", false)) or preview_enemy else "P%d" % (p + 1)
 		tag.position = Vector2(x + 4.0, TOP - 18.0)
 		state.position = Vector2(x + CARD_W * 0.5 - 30.0, TOP - 18.0)
 		state.text = "已就绪" if bool(slot["ready"]) else ""
-		if bool(slot["ready"]):
+		if bool(slot["ready"]) or preview_enemy:
 			ready_cards[int(slot["index"])] = true
 	for i in range(_cards.size()):
 		var frame: ColorRect = _cards[i]["frame"]
