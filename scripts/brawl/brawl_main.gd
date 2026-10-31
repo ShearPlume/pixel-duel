@@ -110,8 +110,10 @@ var _guest_bullets: Array = []
 var _net_targets := {}
 ## In LAN the host runs its own input a few ticks late, about the delay a guest
 ## gets from the round trip, so nobody gets a timing advantage.
-const HOST_INPUT_DELAY := 39
+const HOST_INPUT_DELAY := 17
 var _host_input_queue: Array = []
+var _input_sent := 0
+var _input_keepalive := 0
 ## End-of-match panel, parented to the window so it works on phones too (the
 ## match itself may run inside a SubViewport that does not take input).
 var _end_layer: CanvasLayer = null
@@ -610,7 +612,12 @@ func _send_snapshot() -> void:
 
 func _guest_tick() -> void:
 	if net != null:
-		net.send_data({"t": "in", "b": _local_bits()})
+		var bits := _local_bits()
+		_input_keepalive += 1
+		if bits != _input_sent or _input_keepalive >= 12:
+			_input_sent = bits
+			_input_keepalive = 0
+			net.send_data({"t": "in", "b": bits})
 		if lan_slot < _item_latch.size():
 			_item_latch[lan_slot] = Input.is_action_pressed("p1_ranged")
 	# Predict the local fighter so the input response is immediate; the host's
@@ -644,11 +651,16 @@ func _apply_snapshot() -> void:
 		var brawler: Node2D = brawlers[index]
 		var target := Vector2(float(entry[1]), float(entry[2]))
 		if index == lan_slot:
-			# Running locally: only correct the drift, keep the predicted velocity.
-			if brawler.position.distance_to(target) > 70.0:
+			# The local player runs on prediction. Correcting it every snapshot is
+			# what made it feel like drifting, so only hard events (a hit, a big
+			# mismatch such as a respawn or a platform the guest missed) snap it.
+			var error := brawler.position.distance_to(target)
+			var struck := bool(entry[12])
+			if struck or error > 60.0:
 				brawler.position = target
-			else:
-				brawler.position += (target - brawler.position) * 0.10
+				brawler.vel = Vector2(float(entry[3]), float(entry[4]))
+			elif error > 6.0:
+				brawler.position += (target - brawler.position) * 0.05
 		else:
 			_net_targets[index] = target
 			brawler.vel = Vector2(float(entry[3]), float(entry[4]))
