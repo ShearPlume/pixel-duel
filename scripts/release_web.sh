@@ -63,6 +63,14 @@ html = (dist / "index.html").read_text(encoding="utf-8")
 if "<base " in html:
     raise SystemExit("index.html already contains a <base> tag")
 html = re.sub(r"(<head[^>]*>)", lambda m: m.group(1) + '\n<base href="%s%s/">' % (base, rev), html, count=1)
+# The engine JS reads GODOT_CONFIG.virtualKeyboard, while the export preset still
+# writes the older experimentalVK key. Without this the phone never pops up its
+# keyboard for the nickname / recovery-answer fields.
+if '"virtualKeyboard"' not in html:
+    if '"experimentalVK":true' in html:
+        html = html.replace('"experimentalVK":true', '"experimentalVK":true,"virtualKeyboard":true', 1)
+    else:
+        html = html.replace('const GODOT_CONFIG = {', 'const GODOT_CONFIG = {"virtualKeyboard":true,', 1)
 (deploy / "index.html").write_text(html, encoding="utf-8", newline="\n")
 (root / "build" / "VERSION").write_text(rev + "\n", encoding="utf-8", newline="\n")
 print(rev)
