@@ -152,15 +152,7 @@ func _build() -> void:
 	leave.pressed.connect(_on_leave)
 	_room_box.add_child(leave)
 
-	var hint := Label.new()
-	hint.text = "Same Wi-Fi: host runs the relay (see server/room_server.js). Web: wss://mirugumi.space/idolbrawl-signal"
-	hint.position = Vector2(0.0, 196.0)
-	hint.size = Vector2(640.0, 16.0)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 9)
-	hint.add_theme_color_override("font_color", Color("6f6486"))
-	hint.visible = not DisplayServer.is_touchscreen_available()
-	add_child(hint)
+
 
 
 func _add_button(parent: Node, text: String, callback: Callable) -> Button:
@@ -414,6 +406,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_leave()
 			else:
 				_on_back()
+
 
 
 
