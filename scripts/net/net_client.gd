@@ -13,6 +13,11 @@ signal data_received(from_slot: int, payload: Dictionary)
 signal peer_left(reason: String)
 signal closed(reason: String)
 signal failed(reason: String)
+signal auth_question(name: String, question: String)
+signal auth_unknown(name: String)
+signal auth_ok(name: String, wins: int, losses: int)
+signal auth_error(reason: String)
+signal leaderboard_changed(entries: Array)
 
 ## Same-network play uses the relay directly; the web build goes through the
 ## site's websocket path.
@@ -25,6 +30,9 @@ var url := ""
 var code := ""
 var slot := -1
 var player_name := "Player"
+var account := ""
+var wins := 0
+var losses := 0
 
 var _socket: WebSocketPeer = null
 var _state := 0
@@ -125,10 +133,43 @@ func _handle(text: String) -> void:
 			_open = false
 			code = ""
 			closed.emit(String(packet.get("reason", "")))
+		"auth_question":
+			auth_question.emit(String(packet.get("name", "")), String(packet.get("question", "")))
+		"auth_unknown":
+			auth_unknown.emit(String(packet.get("name", "")))
+		"auth_ok":
+			account = String(packet.get("name", ""))
+			wins = int(packet.get("wins", 0))
+			losses = int(packet.get("losses", 0))
+			auth_ok.emit(account, wins, losses)
+		"auth_error":
+			auth_error.emit(String(packet.get("reason", "auth failed")))
+		"leaderboard":
+			leaderboard_changed.emit(packet.get("entries", []))
 		"error":
 			failed.emit(String(packet.get("reason", "error")))
 		_:
 			pass
+
+
+func register(name: String, question: String, answer: String) -> void:
+	_send({"t": "register", "name": name, "question": question, "answer": answer})
+
+
+func login(name: String) -> void:
+	_send({"t": "auth", "name": name})
+
+
+func answer(name: String, value: String) -> void:
+	_send({"t": "answer", "name": name, "answer": value})
+
+
+func report_result(winner_slot: int) -> void:
+	_send({"t": "result", "winner_slot": winner_slot})
+
+
+func request_leaderboard() -> void:
+	_send({"t": "leaderboard"})
 
 
 func create_room(name: String = "") -> void:
@@ -164,4 +205,5 @@ func _send(payload: Dictionary) -> void:
 		_pending.append(payload)
 		return
 	_socket.send_text(JSON.stringify(payload))
+
 

@@ -38,14 +38,27 @@ fi
 ls -d node_modules/ws >/dev/null 2>&1 && echo "ws module present" || echo "ws module MISSING"
 
 section "systemd unit"
-cat > "/etc/systemd/system/$NAME.service" <<UNIT
+if [ "$(id -u)" = "0" ]; then
+  UNIT_DIR="/etc/systemd/system"
+  SYSTEMCTL="systemctl"
+else
+  # Without root: a user unit plus lingering, which is enough for a relay.
+  UNIT_DIR="$HOME/.config/systemd/user"
+  SYSTEMCTL="systemctl --user"
+  mkdir -p "$UNIT_DIR"
+  loginctl enable-linger "$(id -un)" 2>/dev/null || true
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+fi
+UNIT_USER_LINE=""
+[ "$(id -u)" = "0" ] && UNIT_USER_LINE="User=$RUN_USER"
+cat > "$UNIT_DIR/$NAME.service" <<UNIT
 [Unit]
 Description=pixel-duel LAN room relay
 After=network.target
 
 [Service]
 Type=simple
-User=$RUN_USER
+$UNIT_USER_LINE
 WorkingDirectory=$REPO/server
 Environment=PORT=$PORT
 Environment=MAX_PLAYERS=5
@@ -56,10 +69,17 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 UNIT
-systemctl daemon-reload
-systemctl enable --now "$NAME"
-sleep 1
-systemctl is-active "$NAME"
+if [ "$SYSTEMCTL" = "systemctl" ]; then
+  systemctl daemon-reload
+  systemctl enable --now "$NAME"
+  sleep 1
+  systemctl is-active "$NAME" || journalctl -u "$NAME" -n 20 --no-pager
+else
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$NAME"
+  sleep 1
+  systemctl --user is-active "$NAME" || journalctl --user -u "$NAME" -n 20 --no-pager
+fi
 curl -fsS "http://127.0.0.1:$PORT/health" && echo
 
 section "how /duel-signal is exposed"
@@ -71,6 +91,14 @@ echo "-- processes"
 ps -eo pid,user,args 2>/dev/null | grep -Ei "nginx|caddy|traefik|node .*signal|nuxt" | grep -v grep | head -10 || true
 
 if [ "$APPLY" = "1" ]; then
+  if [ "$(id -u)" != "0" ]; then
+    echo
+    echo "== reverse proxy =="
+    echo "not root: skipping the proxy patch. Run as root, or copy the /duel-signal rule for /idolbrawl-signal."
+  fi
+fi
+
+if [ "$APPLY" = "1" ] && [ "$(id -u)" = "0" ]; then
   section "patch reverse proxy"
   python3 - "$PORT" <<'PY'
 import pathlib, re, shutil, subprocess, sys, time
@@ -122,3 +150,5 @@ section "next"
 echo "client default: wss://mirugumi.space/idolbrawl-signal"
 echo "health: curl http://127.0.0.1:$PORT/health"
 echo "logs: journalctl -u $NAME -n 50 --no-pager"
+
+

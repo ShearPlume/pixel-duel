@@ -23,6 +23,13 @@ var _slot_labels: Array = []
 var _start_button: Button
 var _menu_buttons: Array = []
 var _in_room := false
+var _logged_in := false
+var _pending_name := ""
+var _login_box: VBoxContainer
+var _name_edit: LineEdit
+var _question_edit: LineEdit
+var _answer_edit: LineEdit
+var _create_account_button: Button
 
 
 func _ready() -> void:
@@ -63,6 +70,35 @@ func _build() -> void:
 	_status.add_theme_color_override("font_color", Color("8f7fac"))
 	_status.text = "connecting..."
 	add_child(_status)
+
+	_login_box = VBoxContainer.new()
+	_login_box.position = Vector2(190.0, 112.0)
+	_login_box.size = Vector2(260.0, 170.0)
+	_login_box.add_theme_constant_override("separation", 4)
+	add_child(_login_box)
+
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "name (2-16 chars)"
+	_name_edit.add_theme_font_size_override("font_size", 12)
+	_login_box.add_child(_name_edit)
+
+	var login_row := HBoxContainer.new()
+	login_row.add_theme_constant_override("separation", 6)
+	_login_box.add_child(login_row)
+	var login_button := _add_button(login_row, "LOG IN", _on_login)
+	_create_account_button = _add_button(login_row, "NEW ACCOUNT", _on_show_register)
+
+	_question_edit = LineEdit.new()
+	_question_edit.placeholder_text = "recovery question"
+	_question_edit.add_theme_font_size_override("font_size", 11)
+	_question_edit.visible = false
+	_login_box.add_child(_question_edit)
+
+	_answer_edit = LineEdit.new()
+	_answer_edit.placeholder_text = "answer"
+	_answer_edit.add_theme_font_size_override("font_size", 11)
+	_answer_edit.visible = false
+	_login_box.add_child(_answer_edit)
 
 	_rooms_box = VBoxContainer.new()
 	_rooms_box.position = Vector2(150.0, 120.0)
@@ -143,6 +179,11 @@ func _connect_relay(url: String) -> void:
 	get_tree().root.add_child.call_deferred(net)
 	net.connected.connect(_on_connected)
 	net.rooms_changed.connect(_on_rooms)
+	net.auth_question.connect(_on_auth_question)
+	net.auth_unknown.connect(_on_auth_unknown)
+	net.auth_ok.connect(_on_auth_ok)
+	net.auth_error.connect(_on_auth_error)
+	net.leaderboard_changed.connect(_on_leaderboard)
 	net.joined_room.connect(_on_joined)
 	net.room_changed.connect(_on_room_state)
 	net.data_received.connect(_on_data)
@@ -153,8 +194,82 @@ func _connect_relay(url: String) -> void:
 
 
 func _on_connected() -> void:
-	_status.text = "connected, looking for rooms"
+	_status.text = "connected - log in with a name"
+	_show_login()
+
+
+func _show_login() -> void:
+	_logged_in = false
+	_login_box.visible = true
+	_room_box.visible = false
+	_rooms_box.visible = false
+	for button: Button in _menu_buttons:
+		button.visible = false
+
+
+func _on_login() -> void:
+	if _pending_name != "":
+		net.answer(_pending_name, _answer_edit.text)
+		return
+	_pending_name = _name_edit.text.strip_edges()
+	net.login(_pending_name)
+
+
+func _on_show_register() -> void:
+	_pending_name = ""
+	_question_edit.visible = true
+	_answer_edit.visible = true
+	_create_account_button.text = "CREATE"
+	_create_account_button.pressed.disconnect(_on_show_register)
+	_create_account_button.pressed.connect(_on_register)
+	_status.text = "pick a name, a question and an answer"
+
+
+func _on_register() -> void:
+	net.register(_name_edit.text.strip_edges(), _question_edit.text.strip_edges(), _answer_edit.text.strip_edges())
+
+
+func _on_auth_question(name: String, question: String) -> void:
+	_pending_name = name
+	_question_edit.visible = false
+	_answer_edit.visible = true
+	_status.text = "question: %s" % question
+	_answer_edit.grab_focus()
+
+
+func _on_auth_unknown(name: String) -> void:
+	_pending_name = ""
+	_name_edit.text = name
+	_question_edit.visible = true
+	_answer_edit.visible = true
+	_create_account_button.text = "CREATE"
+	_status.text = "no account called %s - answer a question to create one" % name
+
+
+func _on_auth_ok(name: String, wins: int, losses: int) -> void:
+	_logged_in = true
+	_pending_name = ""
+	_login_box.visible = false
+	_status.text = "logged in as %s   %dW-%dL" % [name, wins, losses]
+	_show_menu()
 	net.list_rooms()
+
+
+func _on_auth_error(reason: String) -> void:
+	_status.text = reason
+
+
+func _on_leaderboard(entries: Array) -> void:
+	if entries.is_empty():
+		return
+	var parts: Array = []
+	for entry: Dictionary in entries.slice(0, 3):
+		parts.append("%s %dW" % [String(entry.get("name", "?")), int(entry.get("wins", 0))])
+	var top := ", ".join(parts)
+	if _logged_in:
+		_status.text = "logged in as %s   |   top: %s" % [net.account, top]
+	else:
+		_status.text = "top: %s" % top
 
 
 func _on_failed(reason: String) -> void:
@@ -275,6 +390,7 @@ func _on_leave() -> void:
 
 
 func _show_menu() -> void:
+	_login_box.visible = false
 	_room_box.visible = false
 	_rooms_box.visible = true
 	for button: Button in _menu_buttons:
@@ -295,4 +411,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_leave()
 			else:
 				_on_back()
+
+
+
 

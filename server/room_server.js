@@ -43,6 +43,62 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const rooms = new Map();
 
+// --- accounts -------------------------------------------------------------
+// A player picks a name plus a recovery question: logging back in means
+// answering it. Answers are stored as salted hashes and never leave the host.
+const fs = require('fs');
+const path = require('path');
+const DATA_DIR = process.env.DATA_DIR || path.join(process.env.HOME || '.', '.pixel-duel-relay');
+const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+
+function loadAccounts() {
+  try {
+    return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
+  } catch (error) {
+    return {};
+  }
+}
+
+let accounts = loadAccounts();
+
+function saveAccounts() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
+  } catch (error) {
+    console.error('cannot save accounts:', error.message);
+  }
+}
+
+function hashAnswer(answer, salt) {
+  return crypto.createHash('sha256').update(`${salt}|${String(answer).trim().toLowerCase()}`).digest('hex');
+}
+
+function cleanName(value) {
+  const name = String(value || '').trim().replace(/\s+/g, ' ');
+  return name.length >= 2 && name.length <= 16 ? name : '';
+}
+
+function leaderboard() {
+  return Object.entries(accounts)
+    .map(([name, record]) => ({ name, wins: record.wins || 0, losses: record.losses || 0 }))
+    .sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name))
+    .slice(0, 10);
+}
+
+function broadcastLeaderboard() {
+  const rows = leaderboard();
+  wss.clients.forEach((client) => send(client, { t: 'leaderboard', entries: rows }));
+}
+
+function authOk(ws, name) {
+  ws.account = name;
+  const record = accounts[name];
+  send(ws, { t: 'auth_ok', name, wins: record.wins || 0, losses: record.losses || 0 });
+  send(ws, { t: 'leaderboard', entries: leaderboard() });
+}
+
+
 function code() {
   let value = '';
   for (let i = 0; i < 6; i += 1) {
@@ -120,9 +176,9 @@ function leave(ws, reason) {
   announceRooms();
 }
 
-function attach(ws, room, name) {
+function attach(ws, room) {
   ws.room = room;
-  room.members.push({ ws, name: String(name || 'Player').slice(0, 16), ready: false });
+  room.members.push({ ws, account: ws.account, name: ws.account, ready: false });
   const slot = room.members.length - 1;
   send(ws, { t: 'joined', code: room.code, slot, max: MAX_PLAYERS });
   broadcastRoom(room);
@@ -155,13 +211,91 @@ wss.on('connection', (ws) => {
     }
     ws.alive = Date.now();
     switch (message.t) {
+      case 'register': {
+        const name = cleanName(message.name);
+        const question = String(message.question || '').trim();
+        const answer = String(message.answer || '').trim();
+        if (!name) {
+          send(ws, { t: 'auth_error', reason: 'name must be 2-16 characters' });
+          return;
+        }
+        if (question.length < 3 || answer.length < 1) {
+          send(ws, { t: 'auth_error', reason: 'question and answer are required' });
+          return;
+        }
+        if (accounts[name]) {
+          send(ws, { t: 'auth_error', reason: 'name already taken' });
+          return;
+        }
+        const salt = crypto.randomBytes(8).toString('hex');
+        accounts[name] = { salt, hash: hashAnswer(answer, salt), question, wins: 0, losses: 0 };
+        saveAccounts();
+        authOk(ws, name);
+        broadcastLeaderboard();
+        break;
+      }
+      case 'auth': {
+        const name = cleanName(message.name);
+        if (!name) {
+          send(ws, { t: 'auth_error', reason: 'name must be 2-16 characters' });
+          return;
+        }
+        const record = accounts[name];
+        if (!record) {
+          send(ws, { t: 'auth_unknown', name });
+          return;
+        }
+        send(ws, { t: 'auth_question', name, question: record.question });
+        break;
+      }
+      case 'answer': {
+        const name = cleanName(message.name);
+        const record = accounts[name];
+        if (!record) {
+          send(ws, { t: 'auth_unknown', name });
+          return;
+        }
+        if (hashAnswer(message.answer, record.salt) !== record.hash) {
+          send(ws, { t: 'auth_error', reason: 'wrong answer' });
+          return;
+        }
+        authOk(ws, name);
+        break;
+      }
+      case 'leaderboard':
+        send(ws, { t: 'leaderboard', entries: leaderboard() });
+        break;
+      case 'result': {
+        // The host reports the winning slot; the relay scores every member.
+        const room = ws.room;
+        if (!room || !ws.account) return;
+        const winner = Number(message.winner_slot);
+        room.members.forEach((member, index) => {
+          if (!member.account) return;
+          const record = accounts[member.account];
+          if (!record) return;
+          if (index === winner) record.wins = (record.wins || 0) + 1;
+          else record.losses = (record.losses || 0) + 1;
+        });
+        saveAccounts();
+        broadcastLeaderboard();
+        break;
+      }
       case 'create': {
+        if (!ws.account) {
+          send(ws, { t: 'error', reason: 'login required' });
+          return;
+        }
         const room = { code: code(), members: [] };
         rooms.set(room.code, room);
-        attach(ws, room, message.name);
+        attach(ws, room);
         break;
       }
       case 'join': {
+        if (!ws.account) {
+          send(ws, { t: 'error', reason: 'login required' });
+          return;
+        }
         const room = rooms.get(String(message.code || '').toUpperCase());
         if (!room) {
           send(ws, { t: 'error', reason: 'room not found' });
@@ -171,7 +305,7 @@ wss.on('connection', (ws) => {
           send(ws, { t: 'error', reason: 'room full' });
           return;
         }
-        attach(ws, room, message.name);
+        attach(ws, room);
         break;
       }
       case 'list':

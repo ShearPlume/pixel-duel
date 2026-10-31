@@ -1,0 +1,92 @@
+name: Provision LAN relay
+
+# Runs the LAN relay setup on the deploy host from a GitHub runner (the only
+# network that can reach it) and commits the output to docs/lan-relay-report.md,
+# so the report can be read without copying logs around.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "server/**"
+      - "scripts/ops/provision_lan.sh"
+      - ".github/workflows/provision-lan.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: provision-lan
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '43.153.223.229' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'deploy' }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        run: |
+          set -e
+          install -m 700 -d ~/.ssh
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            echo "SSH_OPTS=-i ~/.ssh/deploy_key -o IdentitiesOnly=yes" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass >/dev/null
+            echo "SSH_OPTS=-o PreferredAuthentications=password -o PubkeyAuthentication=no" >> "$GITHUB_ENV"
+            echo "USE_SSHPASS=1" >> "$GITHUB_ENV"
+          fi
+          echo "StrictHostKeyChecking=accept-new" > ~/.ssh/config
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Install relay on the host
+        id: provision
+        run: |
+          set -e
+          REMOTE="set -e
+            cd $DEPLOY_ROOT/pixel-duel
+            git fetch --prune origin
+            git reset --hard origin/main
+            git clean -fd
+            bash scripts/ops/provision_lan.sh --apply"
+          set +e
+          if [ "${USE_SSHPASS:-0}" = "1" ]; then
+            OUT=$(sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
+          else
+            OUT=$(ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
+          fi
+          code=$?
+          printf '%s\n' "$OUT"
+          {
+            echo "# LAN relay provisioning"
+            echo
+            echo "commit: \`${GITHUB_SHA:0:7}\`  host: \`$DEPLOY_USER@$DEPLOY_HOST\`  exit: \`$code\`"
+            echo
+            echo '```'
+            printf '%s\n' "$OUT"
+            echo '```'
+          } > docs/lan-relay-report.md
+          exit $code
+
+      - name: Commit the report
+        if: always()
+        run: |
+          set -e
+          if [ ! -f docs/lan-relay-report.md ]; then
+            echo "no report written"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/lan-relay-report.md
+          git commit -m "ci: LAN relay report" || exit 0
+          git push

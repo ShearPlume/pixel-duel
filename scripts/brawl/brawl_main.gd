@@ -92,6 +92,7 @@ var _remote_prev := {}
 var _snapshot := {}
 var _lan_pickups: Array = []
 var _lan_pickup_state := ""
+var _result_reported := false
 var net: Node = null
 
 func _ready() -> void:
@@ -1061,6 +1062,13 @@ func _check_match_end() -> void:
 			standing += 1
 	if standing <= 1:
 		match_over = true
+		if lan_role == "host" and net != null and not _result_reported:
+			_result_reported = true
+			var winner := 0
+			for brawler: Node2D in brawlers:
+				if brawler.stocks > 0:
+					winner = brawler.player_index
+			net.report_result(winner)
 
 func _update_camera(delta: float) -> void:
 	var alive: Array = []
@@ -1119,6 +1127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_tree().change_scene_to_file("res://scenes/lan.tscn")
 			else:
 				get_tree().change_scene_to_file("res://scenes/select.tscn")
+
 
 
 
