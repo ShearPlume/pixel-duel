@@ -15,11 +15,11 @@ const DEAD_EXIT := 0.18
 const BUTTONS := [
 	{"action": "jump", "label": "A", "anchor": Vector2(0.80, 0.56), "r": 0.095},
 	{"action": "light", "label": "B", "anchor": Vector2(0.62, 0.74), "r": 0.080},
-	{"action": "flash", "label": "DASH", "anchor": Vector2(0.50, 0.24), "r": 0.060},
-	{"action": "special", "label": "SKILL", "anchor": Vector2(0.67, 0.17), "r": 0.060},
-	{"action": "ranged", "label": "ITEM", "anchor": Vector2(0.84, 0.21), "r": 0.060},
-	{"action": "assist", "label": "TAG", "anchor": Vector2(0.93, 0.80), "r": 0.055},
-	{"action": "crouch", "label": "DOWN", "anchor": Vector2(0.40, 0.66), "r": 0.060},
+	{"action": "flash", "label": "瞬步", "anchor": Vector2(0.50, 0.24), "r": 0.060},
+	{"action": "special", "label": "技能", "anchor": Vector2(0.67, 0.17), "r": 0.060},
+	{"action": "ranged", "label": "道具", "anchor": Vector2(0.84, 0.21), "r": 0.060},
+	{"action": "assist", "label": "替身", "anchor": Vector2(0.93, 0.80), "r": 0.055},
+	{"action": "crouch", "label": "蹲下", "anchor": Vector2(0.40, 0.66), "r": 0.060},
 ]
 
 const FILL := Color(0.09, 0.07, 0.14, 0.42)

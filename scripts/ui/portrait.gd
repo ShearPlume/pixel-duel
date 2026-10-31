@@ -3,8 +3,8 @@ extends RefCounted
 ##
 ## Godot keeps a fixed design resolution, so on a portrait phone a landscape
 ## design turns into a thin strip at the top with dead space below. This makes
-## the design canvas match the window aspect (width fixed at 640), and menu pages
-## keep their 640x360 layout inside a SubViewport shown in the top half.
+## the design canvas match the window aspect (width fixed at 640): a 640x360
+## page then sits in the top half and the touch panel owns the bottom half.
 
 const DESIGN_HEIGHT := 360.0
 const PAGE := Vector2(640.0, 360.0)
@@ -36,36 +36,17 @@ static func menu_offset(design: Vector2) -> float:
 	return maxf(0.0, (top_area - DESIGN_HEIGHT) * 0.5)
 
 
-## Re-hosts the 2D children `owner` built so far inside a fixed 640x360
-## SubViewport placed in the top half. A menu page is authored for landscape, so
-## this keeps its exact desktop layout on a phone without reflowing it.
-## CanvasLayers (the touch panel) and plain Nodes (audio) stay where they are.
-static func wrap_page(owner: Node, design: Vector2) -> SubViewport:
-	var moving: Array[Node] = []
-	for child in owner.get_children():
-		if child is CanvasItem:
-			moving.append(child)
-
-	var backdrop := ColorRect.new()
-	backdrop.color = Color("0b0913")
-	backdrop.size = design
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	owner.add_child(backdrop)
-
-	var view := SubViewport.new()
-	view.size = Vector2i(int(PAGE.x), int(PAGE.y))
-	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	view.handle_input_locally = true
-
-	var holder := SubViewportContainer.new()
-	holder.stretch = true
-	holder.size = PAGE
-	holder.position = Vector2(0.0, menu_offset(design))
-	holder.mouse_filter = Control.MOUSE_FILTER_PASS
-	owner.add_child(holder)
-	holder.add_child(view)
-
-	for child in moving:
-		owner.remove_child(child)
-		view.add_child(child)
-	return view
+## Fills the whole (possibly tall) canvas with the page colour, behind whatever
+## the scene draws, so no bare window background shows above or below the page.
+static func backdrop(owner: Node, design: Vector2) -> void:
+	# A CanvasLayer at layer -1 is guaranteed to sit behind the page's own
+	# CanvasItems, whatever order the scene built them in.
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	owner.add_child(layer)
+	var fill := ColorRect.new()
+	fill.color = Color("0b0913")
+	fill.size = design
+	fill.position = Vector2.ZERO
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(fill)

@@ -20,6 +20,13 @@ const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 
 const VIEW_W := 640.0
 const VIEW_H := 360.0
+## Item ids are internal; the HUD shows these instead.
+const ITEM_NAMES := {
+	"pistol": "玩具枪",
+	"bat": "吉他",
+	"grenade": "蛋糕", 
+	"cannon": "泡泡炮",
+}
 const FIXED_HZ := 60
 const FIXED_DT := 1.0 / float(FIXED_HZ)
 const MAX_STEPS_PER_FRAME := 5
@@ -54,6 +61,7 @@ var selection := PackedStringArray()
 var camera: Camera2D
 var hud: Label
 var status: Label
+var _hud_text := ""
 
 var accumulator := 0.0
 var ticks := 0
@@ -393,10 +401,10 @@ func _on_net_data(from_slot: int, payload: Dictionary) -> void:
 			pass
 
 func _on_lan_peer_left(_reason: String) -> void:
-	status.text = "A player left the room"
+	status.text = "有玩家离开了房间"
 
 func _on_lan_closed(reason: String) -> void:
-	status.text = "Disconnected: %s (F5 back to rooms)" % reason
+	status.text = "连接断开：%s（按 F5 返回房间）" % reason
 
 
 ## Own input as a bit field. Touch controls and the keyboard both land on p1_,
@@ -1134,24 +1142,28 @@ func _update_hud() -> void:
 	for brawler: Node2D in brawlers:
 		var gear := ""
 		if String(brawler.item) != "":
-			gear = "  [%s x%d]" % [brawler.item, brawler.ammo]
-		text += "P%d %s  hp %d/%d  stocks %d%s\n" % [brawler.player_index + 1,
-			"alive" if brawler.alive else "out", roundi(brawler.hp), roundi(brawler.MAX_HP),
+			gear = "  [%s x%d]" % [ITEM_NAMES.get(String(brawler.item), String(brawler.item)), brawler.ammo]
+		text += "P%d %s  血量 %d/%d  命 %d%s\n" % [brawler.player_index + 1,
+			"存活" if brawler.alive else "出局", roundi(brawler.hp), roundi(brawler.MAX_HP),
 			brawler.stocks, gear]
-	hud.text = text
+	# Text shaping is the most expensive thing the HUD does on a phone, so only
+	# touch it when something actually changed.
+	if text != _hud_text:
+		_hud_text = text
+		hud.text = text
 	if match_over:
 		var winner: Node2D = null
 		for brawler: Node2D in brawlers:
 			if brawler.stocks > 0:
 				winner = brawler
-		var where := "rooms" if MatchConfig.is_lan() else "select"
-		status.text = "WINNER: P%d   (F5 back to %s)" % [winner.player_index + 1, where] if winner != null else "DRAW"
+		var where := "房间" if MatchConfig.is_lan() else "选人"
+		status.text = "胜者：P%d　（按 F5 返回%s）" % [winner.player_index + 1, where] if winner != null else "平局"
 	elif MatchConfig.is_lan():
-		var role_text := "host" if MatchConfig.lan_role == "host" else "guest"
-		status.text = "LAN %s  slot %d  room %s  -  F5 leaves the match" % [
+		var role_text := "房主" if MatchConfig.lan_role == "host" else "客机"
+		status.text = "联机 %s　第 %d 位　房号 %s　-　按 F5 离开" % [
 			role_text, lan_slot + 1, MatchConfig.lan_code]
 	else:
-		status.text = "P1/P2 keyboard - P3-P5 gamepads - F5 reselect"
+		status.text = "P1/P2 键盘　-　P3-P5 手柄　-　按 F5 重新选人"
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:

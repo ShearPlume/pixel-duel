@@ -49,7 +49,8 @@ func _ready() -> void:
 		_touch = true
 	_build()
 	if _touch:
-		Portrait.wrap_page(self, design)
+		Portrait.backdrop(self, design)
+		position.y = Portrait.menu_offset(design)
 	for i in range(MAX_PLAYERS):
 		_slots.append({
 			"joined": i < MIN_PLAYERS,
@@ -68,8 +69,8 @@ func _build() -> void:
 	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(sky)
 
-	var title := _label("CHOOSE YOUR FIGHTER", Vector2(0.0, 26.0), 20, Color("f2e9ff"))
-	title.size = Vector2(640.0, 26.0)
+	var title := _label("选择角色", Vector2(0.0, 20.0), 22, Color("f2e9ff"))
+	title.size = Vector2(640.0, 30.0)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(title)
 
@@ -98,7 +99,6 @@ func _build() -> void:
 		var data := Atlas.load_atlas(CHARACTERS[i])
 		if not data.is_empty():
 			var frames: SpriteFrames = data["frames"]
-			var cell: Vector2 = data["cell"]
 			var anchor: Vector2 = data["anchor"]
 			var content := float(data.get("height", 0.0))
 			var factor := PORTRAIT_HEIGHT / maxf(1.0, content)
@@ -134,19 +134,19 @@ func _build() -> void:
 		_states.append(state)
 
 	var hint := _label(
-		"Touch: stick to move, 鎵?to lock in" if _touch else
-		"P1  A/D  move   J  ready        P2  <-/->  move   Enter  ready        P3-P5  press jump to join",
-		Vector2(0.0, 330.0), 10, Color("8f7fac")
+		"摇杆挑选角色，点 B 确认" if _touch else
+		"P1  A/D 移动  J 确认　　P2  ←/→ 移动  Enter 确认　　P3-P5  按跳跃键加入",
+		Vector2(0.0, 328.0), 11, Color("8f7fac")
 	)
-	hint.size = Vector2(640.0, 16.0)
+	hint.size = Vector2(640.0, 18.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(hint)
 
 	var lan_button := Button.new()
-	lan_button.text = "LAN ROOM"
-	lan_button.position = Vector2(8.0, 6.0)
-	lan_button.size = Vector2(96.0, 22.0)
-	lan_button.add_theme_font_size_override("font_size", 11)
+	lan_button.text = "联机"
+	lan_button.position = Vector2(10.0, 8.0)
+	lan_button.size = Vector2(88.0, 34.0 if _touch else 24.0)
+	lan_button.add_theme_font_size_override("font_size", 15 if _touch else 12)
 	lan_button.pressed.connect(_open_lan)
 	add_child(lan_button)
 
@@ -222,7 +222,7 @@ func _refresh() -> void:
 		tag.text = "P%d" % (p + 1)
 		tag.position = Vector2(x + 4.0, TOP - 18.0)
 		state.position = Vector2(x + CARD_W * 0.5 - 30.0, TOP - 18.0)
-		state.text = "READY" if bool(slot["ready"]) else ""
+		state.text = "已就绪" if bool(slot["ready"]) else ""
 		if bool(slot["ready"]):
 			ready_cards[int(slot["index"])] = true
 	for i in range(_cards.size()):
@@ -263,9 +263,3 @@ func _start_match() -> void:
 		if bool(slot["joined"]):
 			MatchConfig.characters.append(CHARACTERS[int(slot["index"])])
 	get_tree().change_scene_to_file("res://scenes/play.tscn")
-
-
-
-
-
-

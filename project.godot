@@ -8,8 +8,6 @@
 
 config_version=5
 
-"茂禄驴config_version"=5
-
 [application]
 
 config/name="Pixel Duel"
@@ -24,6 +22,10 @@ window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[gui]
+
+theme/custom_font="res://art/fonts/ui_sc.ttf"
 
 [input]
 
