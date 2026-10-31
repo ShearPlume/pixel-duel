@@ -8,6 +8,8 @@ extends Control
 const NetClient = preload("res://scripts/net/net_client.gd")
 const MatchConfig = preload("res://scripts/match_config.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
+const Portrait = preload("res://scripts/ui/portrait.gd")
+const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 
 const CHARACTER_NAMES := ["Yoru", "Nayu", "Hanami", "Kana", "Mosaki"]
 const CHARACTERS := ["res://art/yoru", "res://art/nayu", "res://art/hanami", "res://art/kana", "res://art/mosaki"]
@@ -39,7 +41,13 @@ var _picks := {}
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Portrait phones get a tall canvas; the page keeps its 640x360 shape inside.
+	var design := Vector2(640.0, 360.0)
+	if TouchControls.is_touch_device():
+		design = Portrait.fit_viewport()
 	_build()
+	if design.y > 360.0:
+		Portrait.wrap_page(self, design)
 	_connect_relay(NetClient.default_url())
 
 

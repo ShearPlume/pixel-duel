@@ -11,15 +11,15 @@ const STICK_ACTIONS := ["left", "right", "crouch"]
 const DEAD_ENTER := 0.26
 const DEAD_EXIT := 0.18
 
-## action, label, anchor (0..1 inside the band), radius factor of band height
+## action, label, anchor (0..1 inside the band), radius factor of band unit
 const BUTTONS := [
-	{"action": "jump", "label": "A", "anchor": Vector2(0.80, 0.68), "r": 0.17},
-	{"action": "light", "label": "B", "anchor": Vector2(0.64, 0.72), "r": 0.15},
-	{"action": "flash", "label": "DASH", "anchor": Vector2(0.55, 0.30), "r": 0.11},
-	{"action": "special", "label": "SKILL", "anchor": Vector2(0.71, 0.28), "r": 0.11},
-	{"action": "ranged", "label": "ITEM", "anchor": Vector2(0.87, 0.30), "r": 0.11},
-	{"action": "assist", "label": "TAG", "anchor": Vector2(0.95, 0.74), "r": 0.09},
-	{"action": "crouch", "label": "DOWN", "anchor": Vector2(0.40, 0.74), "r": 0.10},
+	{"action": "jump", "label": "A", "anchor": Vector2(0.80, 0.56), "r": 0.095},
+	{"action": "light", "label": "B", "anchor": Vector2(0.62, 0.74), "r": 0.080},
+	{"action": "flash", "label": "DASH", "anchor": Vector2(0.50, 0.24), "r": 0.060},
+	{"action": "special", "label": "SKILL", "anchor": Vector2(0.67, 0.17), "r": 0.060},
+	{"action": "ranged", "label": "ITEM", "anchor": Vector2(0.84, 0.21), "r": 0.060},
+	{"action": "assist", "label": "TAG", "anchor": Vector2(0.93, 0.80), "r": 0.055},
+	{"action": "crouch", "label": "DOWN", "anchor": Vector2(0.40, 0.66), "r": 0.060},
 ]
 
 const FILL := Color(0.09, 0.07, 0.14, 0.42)
@@ -37,12 +37,16 @@ var _stick := Vector2.ZERO
 var _size := Vector2(640.0, 360.0)
 var _band_top := 180.0
 var _band_h := 180.0
+var _band_locked := false
 var _stick_center := Vector2(78.0, 288.0)
 var _stick_radius := 46.0
 var _slots := {}
 
 
 static func is_touch_device() -> bool:
+	# PIXEL_TOUCH=1 forces the handheld layout on a desktop for screenshots.
+	if OS.get_environment("PIXEL_TOUCH") == "1":
+		return true
 	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available()
 
 
@@ -59,6 +63,7 @@ func _ready() -> void:
 
 ## Called by the shell: reserve the bottom `height` pixels for the panel.
 func use_band(top: float, height: float) -> void:
+	_band_locked = true
 	_band_top = top
 	_band_h = height
 	_layout()
@@ -66,23 +71,33 @@ func use_band(top: float, height: float) -> void:
 
 func _layout() -> void:
 	_size = get_viewport().get_visible_rect().size
-	if _band_h <= 0.0:
+	if not _band_locked:
 		_band_top = floorf(_size.y * 0.5)
 		_band_h = _size.y - _band_top
 
-	var stick_r := minf(_band_h * 0.20, 54.0)
+	# Size everything from the smaller of band width/height so a tall portrait
+	# panel does not blow the buttons up to half the screen.
+	var unit := minf(_size.x, _band_h)
+	var stick_r := maxf(24.0, unit * 0.18)
 	_stick_radius = stick_r
-	_stick_center = Vector2(stick_r + 26.0, _band_top + _band_h * 0.56)
+	_stick_center = Vector2(stick_r + unit * 0.05, _band_top + _band_h * 0.55)
 
 	_slots = {}
 	for button: Dictionary in BUTTONS:
 		var anchor: Vector2 = button["anchor"]
-		var radius := maxf(14.0, float(button["r"]) * _band_h)
+		var radius := maxf(14.0, float(button["r"]) * unit)
 		_slots[button["action"]] = {
 			"at": Vector2(anchor.x * _size.x, _band_top + anchor.y * _band_h),
 			"r": radius,
 		}
 	_view.queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	# The portrait canvas may be applied after this node's first layout, so keep
+	# watching the design size instead of relying on size_changed alone.
+	if not get_viewport().get_visible_rect().size.is_equal_approx(_size):
+		_layout()
 
 
 func _input(event: InputEvent) -> void:

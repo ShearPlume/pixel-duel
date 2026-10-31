@@ -33,6 +33,7 @@ var _starting := false
 
 const Sfx = preload("res://scripts/audio/sfx.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
+const Portrait = preload("res://scripts/ui/portrait.gd")
 
 var _sfx: Node
 var _touch := false
@@ -41,10 +42,14 @@ func _ready() -> void:
 	_sfx = Sfx.new()
 	add_child(_sfx)
 	# A phone can drive only P1, so P2 joins ready and fights as the CPU.
+	var design := Vector2(640.0, 360.0)
 	if TouchControls.is_touch_device():
+		design = Portrait.fit_viewport()
 		add_child(TouchControls.new())
 		_touch = true
 	_build()
+	if _touch:
+		Portrait.wrap_page(self, design)
 	for i in range(MAX_PLAYERS):
 		_slots.append({
 			"joined": i < MIN_PLAYERS,
