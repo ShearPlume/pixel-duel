@@ -70,11 +70,19 @@ PY
 )
 
 echo "    revision $REV"
-for f in build/deploy/"$REV"/*; do
-  coscmd -c "$COSCONF" upload -f "$f" "$BUCKET_PATH/$REV/$(basename "$f")" >/dev/null
-done
-coscmd -c "$COSCONF" upload -f build/deploy/index.html "$BUCKET_PATH/index.html" >/dev/null
-echo "    uploaded; entry page now points at $REV"
+# The wasm is the whole page weight: upload it gzip-encoded with an immutable
+# cache header. Falls back to a plain coscmd upload if the SDK is unavailable.
+if python3 tools/web/upload_cos.py --prefix "${BUCKET_PATH#/}" --rev "$REV" \
+    --rev-dir "build/deploy/$REV" --entry build/deploy/index.html; then
+  echo "    uploaded (wasm gzip)"
+else
+  echo "    python uploader unavailable, falling back to coscmd"
+  for f in build/deploy/"$REV"/*; do
+    coscmd -c "$COSCONF" upload -f "$f" "$BUCKET_PATH/$REV/$(basename "$f")" >/dev/null
+  done
+  coscmd -c "$COSCONF" upload -f build/deploy/index.html "$BUCKET_PATH/index.html" >/dev/null
+fi
+echo "    entry page now points at $REV"
 echo "REVISION=$REV"
 echo "PUBLIC_URL=${PUBLIC_BASE}index.html"
 

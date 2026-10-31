@@ -138,6 +138,26 @@ jobs:
           fi
           echo "revision=$REV" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke test the live build
+        env:
+          REV: ${{ steps.release.outputs.revision }}
+        run: |
+          set -e
+          base="${PUBLIC_BASE}${REV}/"
+          echo "asset base: $base"
+          encoding=$(curl -sI -H "Accept-Encoding: gzip" "${base}index.wasm" | tr -d '\r' \
+            | awk 'tolower($1)=="content-encoding:"{print tolower($2)}')
+          echo "wasm content-encoding: ${encoding:-none}"
+          curl -fsS --compressed -o /tmp/index.wasm "${base}index.wasm"
+          curl -fsS --compressed -o /tmp/index.pck "${base}index.pck"
+          python3 - <<'PY'
+          import pathlib
+          wasm = pathlib.Path('/tmp/index.wasm').read_bytes()
+          pck = pathlib.Path('/tmp/index.pck').read_bytes()
+          assert wasm[:4] == b'\x00asm', f'bad wasm magic {wasm[:4]!r}'
+          assert pck[:4] == b'GDPC', f'bad pck magic {pck[:4]!r}'
+          print(f'wasm {len(wasm) / 2**20:.2f} MiB, pck {len(pck) / 2**20:.2f} MiB, both load')
+          PY
       - name: Verify the live page points at the new revision
         env:
           REV: ${{ steps.release.outputs.revision }}
@@ -154,6 +174,7 @@ jobs:
           done
           echo "::error::live page does not reference $REV yet (${PUBLIC_BASE}index.html)"
           exit 1
+
 
 
 
