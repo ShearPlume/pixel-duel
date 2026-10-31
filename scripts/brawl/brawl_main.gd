@@ -44,7 +44,7 @@ const NET_USE := 16
 const NET_RELEASE := 32
 const NET_CROUCH := 64
 ## 60 Hz simulation, 20 Hz snapshots.
-const SNAPSHOT_EVERY := 2
+const SNAPSHOT_EVERY := 1
 const HEART_MAX := 2
 const HEART_HEAL := 45.0
 const ZOOM_MIN := 0.42
@@ -105,6 +105,13 @@ var _snapshot := {}
 ## Bullets a guest replays for itself: the host owns the hits, the guest only has
 ## to draw the same thing in the same place.
 var _guest_bullets: Array = []
+## Latest host position of every other player, smoothed every frame so guests
+## see the same motion the host does instead of 30 Hz stepping.
+var _net_targets := {}
+## In LAN the host runs its own input a few ticks late, about the delay a guest
+## gets from the round trip, so nobody gets a timing advantage.
+const HOST_INPUT_DELAY := 39
+var _host_input_queue: Array = []
 ## End-of-match panel, parented to the window so it works on phones too (the
 ## match itself may run inside a SubViewport that does not take input).
 var _end_layer: CanvasLayer = null
@@ -334,9 +341,27 @@ func _process(delta: float) -> void:
 	while accumulator >= FIXED_DT:
 		_step_fixed()
 		accumulator -= FIXED_DT
+	_smooth_remote_players(delta)
 	_update_camera(delta)
 	_animate_stage(delta)
 	_update_hud()
+
+
+## Frame-rate smoothing for the players the guest does not simulate.
+func _smooth_remote_players(delta: float) -> void:
+	if _net_targets.is_empty():
+		return
+	var weight := 1.0 - exp(-delta * 18.0)
+	for index: int in _net_targets.keys():
+		if index == lan_slot or index >= brawlers.size():
+			continue
+		var brawler: Node2D = brawlers[index]
+		var target: Vector2 = _net_targets[index]
+		var gap := brawler.position.distance_to(target)
+		if gap > 180.0:
+			brawler.position = target
+		else:
+			brawler.position = brawler.position.lerp(target, weight)
 
 ## Stage gimmicks need motion to read: hazard vents throb, belts scroll their
 ## chevrons, bounce pads breathe.
@@ -368,6 +393,9 @@ func _step_fixed() -> void:
 				_tick_respawn(index, brawler)
 				continue
 			var command: Dictionary = _command(index)
+			if lan_role == "host" and net != null and index == lan_slot:
+				# Same input latency as a guest, so the host is not faster.
+				command = _delayed_host_command(command)
 			_apply_gimmicks(brawler)
 			brawler.step(FIXED_DT, command, Stage.PLATFORMS)
 			_bounce(brawler)
@@ -471,6 +499,15 @@ func _update_guest_bullets() -> void:
 		if float(shot.life) <= 0.0 or float(shot.y) > 420.0:
 			node.queue_free()
 			_guest_bullets.erase(shot)
+
+
+## Buffers the host's own command behind a fixed delay (~1/60 s per unit).
+func _delayed_host_command(command: Dictionary) -> Dictionary:
+	_host_input_queue.append(command)
+	var delay := maxi(1, int(round(float(HOST_INPUT_DELAY) / 1000.0 * float(FIXED_HZ))))
+	if _host_input_queue.size() <= delay:
+		return {}
+	return _host_input_queue.pop_front()
 
 
 func _setup_lan() -> void:
@@ -613,7 +650,7 @@ func _apply_snapshot() -> void:
 			else:
 				brawler.position += (target - brawler.position) * 0.10
 		else:
-			brawler.position = brawler.position.lerp(target, blend)
+			_net_targets[index] = target
 			brawler.vel = Vector2(float(entry[3]), float(entry[4]))
 		brawler.facing = int(entry[5])
 		brawler.on_ground = bool(entry[6])
@@ -622,7 +659,10 @@ func _apply_snapshot() -> void:
 		var alive := bool(entry[9])
 		brawler.alive = alive
 		brawler.visible = alive
-		brawler.attack = String(entry[10])
+		# Keep a locally predicted attack running: overwriting it with a slightly
+		# older snapshot is what makes guests stutter mid-swing.
+		if index != lan_slot or String(brawler.attack) == "" or String(entry[10]) != "":
+			brawler.attack = String(entry[10])
 		brawler.item = String(entry[11])
 		brawler.hitstun = 1.0 if bool(entry[12]) else 0.0
 		brawler.invuln = 1.0 if bool(entry[13]) else 0.0
