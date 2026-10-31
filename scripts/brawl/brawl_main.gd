@@ -37,7 +37,7 @@ const NET_USE := 16
 const NET_RELEASE := 32
 const NET_CROUCH := 64
 ## 60 Hz simulation, 20 Hz snapshots.
-const SNAPSHOT_EVERY := 3
+const SNAPSHOT_EVERY := 2
 const HEART_MAX := 2
 const HEART_HEAL := 45.0
 const ZOOM_MIN := 0.42
@@ -464,7 +464,23 @@ func _guest_tick() -> void:
 		net.send_data({"t": "in", "b": _local_bits()})
 		if lan_slot < _item_latch.size():
 			_item_latch[lan_slot] = Input.is_action_pressed("p1_ranged")
+	# Predict the local fighter so the input response is immediate; the host's
+	# snapshot then pulls it back into sync.
+	_predict_local()
 	_apply_snapshot()
+
+
+## Guests run only their own fighter; everything else comes from snapshots.
+func _predict_local() -> void:
+	if lan_slot < 0 or lan_slot >= brawlers.size():
+		return
+	var brawler: Node2D = brawlers[lan_slot]
+	if not brawler.alive:
+		return
+	var command: Dictionary = _command(lan_slot)
+	_apply_gimmicks(brawler)
+	brawler.step(FIXED_DT, command, Stage.PLATFORMS)
+	_bounce(brawler)
 
 
 func _apply_snapshot() -> void:
@@ -476,8 +492,16 @@ func _apply_snapshot() -> void:
 		if index < 0 or index >= brawlers.size():
 			continue
 		var brawler: Node2D = brawlers[index]
-		brawler.position = brawler.position.lerp(Vector2(float(entry[1]), float(entry[2])), blend)
-		brawler.vel = Vector2(float(entry[3]), float(entry[4]))
+		var target := Vector2(float(entry[1]), float(entry[2]))
+		if index == lan_slot:
+			# Running locally: only correct the drift, keep the predicted velocity.
+			if brawler.position.distance_to(target) > 70.0:
+				brawler.position = target
+			else:
+				brawler.position += (target - brawler.position) * 0.10
+		else:
+			brawler.position = brawler.position.lerp(target, blend)
+			brawler.vel = Vector2(float(entry[3]), float(entry[4]))
 		brawler.facing = int(entry[5])
 		brawler.on_ground = bool(entry[6])
 		brawler.hp = float(entry[7])
@@ -1137,6 +1161,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_tree().change_scene_to_file("res://scenes/lan.tscn")
 			else:
 				get_tree().change_scene_to_file("res://scenes/select.tscn")
+
+
 
 
 

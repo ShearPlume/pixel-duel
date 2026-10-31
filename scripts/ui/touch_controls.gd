@@ -1,41 +1,45 @@
 extends CanvasLayer
-## On-screen controls for touch devices (phones, tablets, touch laptops, web).
+## Handheld style on-screen controls: the game screen occupies the top half of
+## the viewport and this panel owns the bottom half, so buttons never sit on top
+## of the playfield. Positions are derived from the real viewport size, which is
+## portrait on phones (stretch aspect "expand" grows the design height).
 ##
-## It drives the same p1_* actions the keyboard uses, so nothing in the match or
-## the character select needs to know that a finger is pressing instead of a key.
-## Left thumb: fixed-base stick (left/right to move, down to crouch). Right hand:
-## jump, attack, item, dash, special and assist buttons.
+## It drives the same p1_* actions the keyboard uses.
 
 const PREFIX := "p1_"
-## The bottom band is reserved for controls; the game is drawn above it, the
-## same split the reference project uses on phones.
-const BAND_HEIGHT := 144.0
-const JOY_CENTER := Vector2(78.0, 288.0)
-const JOY_RADIUS := 46.0
-## Wider than the visual base so a thumb can grab slightly outside it.
-const JOY_GRAB := 72.0
+const STICK_ACTIONS := ["left", "right", "crouch"]
 const DEAD_ENTER := 0.26
 const DEAD_EXIT := 0.18
-const STICK_ACTIONS := ["left", "right", "crouch"]
 
+## action, label, anchor (0..1 inside the band), radius factor of band height
 const BUTTONS := [
-	{"action": "jump", "label": "A", "at": Vector2(530.0, 316.0), "r": 30.0},
-	{"action": "light", "label": "B", "at": Vector2(452.0, 320.0), "r": 26.0},
-	{"action": "flash", "label": "DASH", "at": Vector2(432.0, 246.0), "r": 20.0},
-	{"action": "special", "label": "SKILL", "at": Vector2(492.0, 238.0), "r": 20.0},
-	{"action": "ranged", "label": "ITEM", "at": Vector2(552.0, 244.0), "r": 20.0},
-	{"action": "assist", "label": "TAG", "at": Vector2(604.0, 306.0), "r": 18.0},
+	{"action": "jump", "label": "A", "anchor": Vector2(0.80, 0.68), "r": 0.17},
+	{"action": "light", "label": "B", "anchor": Vector2(0.64, 0.72), "r": 0.15},
+	{"action": "flash", "label": "DASH", "anchor": Vector2(0.55, 0.30), "r": 0.11},
+	{"action": "special", "label": "SKILL", "anchor": Vector2(0.71, 0.28), "r": 0.11},
+	{"action": "ranged", "label": "ITEM", "anchor": Vector2(0.87, 0.30), "r": 0.11},
+	{"action": "assist", "label": "TAG", "anchor": Vector2(0.95, 0.74), "r": 0.09},
+	{"action": "crouch", "label": "DOWN", "anchor": Vector2(0.40, 0.74), "r": 0.10},
 ]
 
 const FILL := Color(0.09, 0.07, 0.14, 0.42)
 const STROKE := Color(0.85, 0.80, 0.95, 0.55)
 const HELD := Color(0.95, 0.85, 1.0, 0.55)
+const PANEL := Color(0.05, 0.04, 0.09, 1.0)
+const PANEL_EDGE := Color(0.35, 0.30, 0.46, 0.9)
 
 var _view: Control
 var _touches := {}
 var _counts := {}
 var _dir_actions: Array = []
 var _stick := Vector2.ZERO
+
+var _size := Vector2(640.0, 360.0)
+var _band_top := 180.0
+var _band_h := 180.0
+var _stick_center := Vector2(78.0, 288.0)
+var _stick_radius := 46.0
+var _slots := {}
 
 
 static func is_touch_device() -> bool:
@@ -49,6 +53,35 @@ func _ready() -> void:
 	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_view.draw.connect(_paint)
 	add_child(_view)
+	get_viewport().size_changed.connect(_layout)
+	_layout()
+
+
+## Called by the shell: reserve the bottom `height` pixels for the panel.
+func use_band(top: float, height: float) -> void:
+	_band_top = top
+	_band_h = height
+	_layout()
+
+
+func _layout() -> void:
+	_size = get_viewport().get_visible_rect().size
+	if _band_h <= 0.0:
+		_band_top = floorf(_size.y * 0.5)
+		_band_h = _size.y - _band_top
+
+	var stick_r := minf(_band_h * 0.20, 54.0)
+	_stick_radius = stick_r
+	_stick_center = Vector2(stick_r + 26.0, _band_top + _band_h * 0.56)
+
+	_slots = {}
+	for button: Dictionary in BUTTONS:
+		var anchor: Vector2 = button["anchor"]
+		var radius := maxf(14.0, float(button["r"]) * _band_h)
+		_slots[button["action"]] = {
+			"at": Vector2(anchor.x * _size.x, _band_top + anchor.y * _band_h),
+			"r": radius,
+		}
 	_view.queue_redraw()
 
 
@@ -64,14 +97,15 @@ func _touch(event: InputEventScreenTouch) -> void:
 		if _touches.has(event.index):
 			_end(event.index, false)
 		var at := event.position
-		if at.distance_to(JOY_CENTER) <= JOY_GRAB and not _stick_owner_taken():
+		if at.y >= _band_top and at.distance_to(_stick_center) <= _stick_radius * 1.7 \
+				and not _stick_owner_taken():
 			_touches[event.index] = {"kind": "stick"}
 			_move_stick(at)
 			return
-		var button := _button_at(at)
-		if not button.is_empty():
-			_touches[event.index] = {"kind": "button", "action": String(button["action"])}
-			_press(String(button["action"]))
+		var action := _button_at(at)
+		if action != "":
+			_touches[event.index] = {"kind": "button", "action": action}
+			_press(action)
 			_view.queue_redraw()
 	elif _touches.has(event.index):
 		_end(event.index, not event.canceled)
@@ -80,8 +114,7 @@ func _touch(event: InputEventScreenTouch) -> void:
 func _drag(event: InputEventScreenDrag) -> void:
 	if not _touches.has(event.index):
 		return
-	var contact: Dictionary = _touches[event.index]
-	if String(contact["kind"]) == "stick":
+	if String(_touches[event.index]["kind"]) == "stick":
 		_move_stick(event.position)
 
 
@@ -103,10 +136,8 @@ func _stick_owner_taken() -> bool:
 	return false
 
 
-## Stick to discrete directions with hysteresis: a diagonal cannot flicker and a
-## held direction only releases after leaving the smaller exit radius.
 func _move_stick(at: Vector2) -> void:
-	_stick = ((at - JOY_CENTER) / JOY_RADIUS).limit_length(1.0)
+	_stick = ((at - _stick_center) / _stick_radius).limit_length(1.0)
 	var actions: Array = []
 	if _stick.length() >= (DEAD_ENTER if _dir_actions.is_empty() else DEAD_EXIT):
 		var threshold := 0.42 if _dir_actions.is_empty() else 0.30
@@ -114,7 +145,7 @@ func _move_stick(at: Vector2) -> void:
 			actions.append("left")
 		elif _stick.x > threshold:
 			actions.append("right")
-		if _stick.y > 0.5:
+		if _stick.y > 0.42:
 			actions.append("crouch")
 	_set_directions(actions)
 	_view.queue_redraw()
@@ -154,36 +185,40 @@ func _is_held(action: String) -> bool:
 	return int(_counts.get(action, 0)) > 0
 
 
-func _button_at(at: Vector2) -> Dictionary:
-	for button: Dictionary in BUTTONS:
-		if at.distance_to(button["at"]) <= float(button["r"]) * 1.25:
-			return button
-	return {}
+func _button_at(at: Vector2) -> String:
+	for action: String in _slots:
+		var slot: Dictionary = _slots[action]
+		if at.distance_to(slot["at"]) <= float(slot["r"]) * 1.3:
+			return action
+	return ""
 
 
 func _paint() -> void:
-	# Opaque band, so the playfield above it reads as its own screen area.
-	var band_top := 360.0 - BAND_HEIGHT
-	_view.draw_rect(Rect2(0.0, band_top, 640.0, BAND_HEIGHT), Color(0.04, 0.03, 0.07, 0.96))
-	_view.draw_line(Vector2(0.0, band_top), Vector2(640.0, band_top), Color(0.35, 0.30, 0.46, 0.9), 1.0)
-	# Stick base plus a nub that saturates at the rim.
-	_view.draw_circle(JOY_CENTER, JOY_RADIUS, FILL)
-	_view.draw_arc(JOY_CENTER, JOY_RADIUS, 0.0, TAU, 40, STROKE, 2.0)
-	var nub := JOY_CENTER + _stick * (JOY_RADIUS - 18.0)
-	_view.draw_circle(nub, 18.0, Color(0.85, 0.78, 0.95, 0.35 if _stick.length() < DEAD_ENTER else 0.6))
-	_view.draw_arc(nub, 18.0, 0.0, TAU, 24, STROKE, 1.5)
+	# The bottom half is a panel: nothing from the game shows through it.
+	_view.draw_rect(Rect2(0.0, _band_top, _size.x, _size.y - _band_top), PANEL)
+	_view.draw_line(Vector2(0.0, _band_top), Vector2(_size.x, _band_top), PANEL_EDGE, 2.0)
+
+	var nub_r := _stick_radius * 0.42
+	_view.draw_circle(_stick_center, _stick_radius, FILL)
+	_view.draw_arc(_stick_center, _stick_radius, 0.0, TAU, 44, STROKE, 2.0)
+	var nub := _stick_center + _stick * (_stick_radius - nub_r)
+	_view.draw_circle(nub, nub_r, Color(0.85, 0.78, 0.95, 0.35 if _stick.length() < DEAD_ENTER else 0.6))
+	_view.draw_arc(nub, nub_r, 0.0, TAU, 28, STROKE, 1.5)
 
 	var font := ThemeDB.fallback_font
 	for button: Dictionary in BUTTONS:
 		var action := String(button["action"])
-		var at: Vector2 = button["at"]
-		var radius := float(button["r"])
+		var slot: Dictionary = _slots.get(action, {})
+		if slot.is_empty():
+			continue
+		var at: Vector2 = slot["at"]
+		var radius := float(slot["r"])
 		var down := _is_held(action)
 		_view.draw_circle(at, radius, HELD if down else FILL)
-		_view.draw_arc(at, radius, 0.0, TAU, 32, Color("f2e9ff") if down else STROKE, 2.0)
-		var size := 11 if radius < 26.0 else 12
-		_view.draw_string(font, at + Vector2(-radius, size * 0.36), String(button["label"]),
-			HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, size,
-			Color(0.98, 0.95, 1.0, 0.92))
+		_view.draw_arc(at, radius, 0.0, TAU, 36, Color("f2e9ff") if down else STROKE, 2.0)
+		var font_size := int(clampf(radius * 0.62, 11.0, 20.0))
+		_view.draw_string(font, at + Vector2(-radius, font_size * 0.36), String(button["label"]),
+			HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, font_size,
+			Color(0.98, 0.95, 1.0, 0.94))
 
 

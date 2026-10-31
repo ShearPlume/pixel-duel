@@ -8,8 +8,8 @@ extends Control
 const NetClient = preload("res://scripts/net/net_client.gd")
 const MatchConfig = preload("res://scripts/match_config.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
-const TouchKeyboard = preload("res://scripts/ui/touch_keyboard.gd")
 
+const CHARACTER_NAMES := ["Yoru", "Nayu", "Hanami", "Kana", "Mosaki"]
 const CHARACTERS := ["res://art/yoru", "res://art/nayu", "res://art/hanami", "res://art/kana", "res://art/mosaki"]
 const MAX_SLOTS := 5
 const MIN_PLAYERS := 2
@@ -25,14 +25,16 @@ var _start_button: Button
 var _menu_buttons: Array = []
 var _in_room := false
 var _logged_in := false
-var _keyboard: Control
-var _editing: LineEdit
 var _pending_name := ""
 var _login_box: VBoxContainer
 var _name_edit: LineEdit
 var _question_edit: LineEdit
 var _answer_edit: LineEdit
 var _create_account_button: Button
+var _pick_label: Label
+var _my_pick := 0
+## slot -> character index, filled by the host from everyone's pick.
+var _picks := {}
 
 
 func _ready() -> void:
@@ -81,7 +83,6 @@ func _build() -> void:
 	add_child(_login_box)
 
 	_name_edit = LineEdit.new()
-	_wire_touch(_name_edit, "你的名字")
 	_name_edit.placeholder_text = "name (2-16 chars)"
 	_name_edit.add_theme_font_size_override("font_size", 12)
 	_login_box.add_child(_name_edit)
@@ -93,14 +94,12 @@ func _build() -> void:
 	_create_account_button = _add_button(login_row, "NEW ACCOUNT", _on_show_register)
 
 	_question_edit = LineEdit.new()
-	_wire_touch(_question_edit, "密保问题")
 	_question_edit.placeholder_text = "recovery question"
 	_question_edit.add_theme_font_size_override("font_size", 11)
 	_question_edit.visible = false
 	_login_box.add_child(_question_edit)
 
 	_answer_edit = LineEdit.new()
-	_wire_touch(_answer_edit, "答案")
 	_answer_edit.placeholder_text = "answer"
 	_answer_edit.add_theme_font_size_override("font_size", 11)
 	_answer_edit.visible = false
@@ -145,6 +144,26 @@ func _build() -> void:
 		_room_box.add_child(label)
 		_slot_labels.append(label)
 
+	var pick_row := HBoxContainer.new()
+	pick_row.add_theme_constant_override("separation", 4)
+	_room_box.add_child(pick_row)
+	var previous_pick := Button.new()
+	previous_pick.text = "<"
+	previous_pick.custom_minimum_size = Vector2(28.0, 26.0)
+	previous_pick.pressed.connect(func() -> void: _pick(-1))
+	pick_row.add_child(previous_pick)
+	_pick_label = Label.new()
+	_pick_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_pick_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pick_label.add_theme_font_size_override("font_size", 12)
+	_pick_label.text = CHARACTER_NAMES[0]
+	pick_row.add_child(_pick_label)
+	var next_pick := Button.new()
+	next_pick.text = ">"
+	next_pick.custom_minimum_size = Vector2(28.0, 26.0)
+	next_pick.pressed.connect(func() -> void: _pick(1))
+	pick_row.add_child(next_pick)
+
 	_start_button = Button.new()
 	_start_button.text = "START MATCH"
 	_start_button.disabled = true
@@ -159,38 +178,6 @@ func _build() -> void:
 	_room_box.add_child(leave)
 
 
-
-
-func _wire_touch(edit: LineEdit, heading: String) -> void:
-	# Browser virtual keyboards are unreliable inside the canvas, so on touch
-	# devices the field opens the in-game keypad instead.
-	if not DisplayServer.is_touchscreen_available():
-		return
-	edit.editable = false
-	edit.gui_input.connect(func(event: InputEvent) -> void:
-		var pressed: bool = (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed) \
-			or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed)
-		if pressed:
-			_open_keyboard(edit, heading))
-
-
-func _open_keyboard(edit: LineEdit, heading: String) -> void:
-	if _keyboard == null:
-		_keyboard = TouchKeyboard.new()
-		add_child(_keyboard)
-		_keyboard.submitted.connect(_apply_edit)
-		_keyboard.cancelled.connect(func() -> void: _keyboard.visible = false)
-	_editing = edit
-	_keyboard.visible = true
-	_keyboard.setup(edit.text, heading)
-	_keyboard.move_to_front()
-
-
-func _apply_edit(text: String) -> void:
-	if _editing != null:
-		_editing.text = text
-	if _keyboard != null:
-		_keyboard.visible = false
 
 
 func _add_button(parent: Node, text: String, callback: Callable) -> Button:
@@ -372,10 +359,20 @@ func _on_room_state(state: Dictionary) -> void:
 	_start_button.disabled = slots.size() < MIN_PLAYERS
 
 
+## Each player picks a fighter inside the room; the host collects the picks and
+## ships them with the start packet so every client builds the same roster.
+func _pick(delta: int) -> void:
+	_my_pick = wrapi(_my_pick + delta, 0, CHARACTER_NAMES.size())
+	_pick_label.text = CHARACTER_NAMES[_my_pick]
+	_picks[MatchConfig.lan_slot] = _my_pick
+	if net != null:
+		net.send_data({"t": "pick", "c": _my_pick})
+
+
 func _on_start() -> void:
 	if MatchConfig.lan_slot != 0 or net == null:
 		return
-	net.send_data({"t": "start"})
+	net.send_data({"t": "start", "picks": _picks})
 	_begin(0)
 
 
@@ -444,6 +441,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_leave()
 			else:
 				_on_back()
+
+
+
 
 
 

@@ -1,13 +1,12 @@
 extends Node
-## Scene wrapper for a match. On touch devices it renders the brawl into a
-## SubViewport on the top of the screen and puts the controls in a dedicated
-## bottom panel, the way a handheld does it. On keyboard setups the match just
-## fills the screen.
+## Scene wrapper for a match.
+##
+## Touch devices get the handheld split: the brawl renders into a SubViewport
+## that fills the top half of the portrait screen, and the bottom half is the
+## control panel. Keyboard builds just show the match full screen.
 
 const BrawlScene = preload("res://scenes/brawl.tscn")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
-
-const SCREEN_HEIGHT := 216
 
 
 func _ready() -> void:
@@ -15,8 +14,11 @@ func _ready() -> void:
 		add_child(BrawlScene.instantiate())
 		return
 
+	var vp := get_viewport().get_visible_rect().size
+	var screen_h := floorf(vp.y * 0.5)
+
 	var view := SubViewport.new()
-	view.size = Vector2i(640, SCREEN_HEIGHT)
+	view.size = Vector2i(int(vp.x), int(screen_h))
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.handle_input_locally = false
 	view.gui_disable_input = true
@@ -26,11 +28,13 @@ func _ready() -> void:
 	var screen := TextureRect.new()
 	screen.texture = view.get_texture()
 	screen.position = Vector2.ZERO
-	screen.size = Vector2(640.0, float(SCREEN_HEIGHT))
+	screen.size = Vector2(vp.x, screen_h)
 	screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	screen.stretch_mode = TextureRect.STRETCH_SCALE
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(screen)
 
-	add_child(TouchControls.new())
+	var controls := TouchControls.new()
+	add_child(controls)
+	controls.use_band(screen_h, vp.y - screen_h)
