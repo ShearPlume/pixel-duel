@@ -1,11 +1,25 @@
-name: Deploy web
+﻿name: Deploy web
 
-# Push to main: the deploy server clones/updates the repo, builds the web export
-# with its own Godot + templates and publishes it to the game bucket.
+# On push to main: SSH to the deploy server, update the checkout there, build the
+# web export with the server's Godot + templates and publish it to the game
+# bucket. First run clones the repo, later runs just fetch/reset.
+#
+# Repository secrets / variables:
+#   DEPLOY_HOST      43.153.223.229                     (secret)
+#   DEPLOY_USER      deploy                             (secret)
+#   DEPLOY_SSH_KEY   private key matching authorized_keys (secret, preferred)
+#   DEPLOY_PASSWORD  account password when no key is used (secret, optional)
+#   DEPLOY_ROOT      /home/deploy/build                 (variable, optional)
+#   PUBLIC_BASE      https://mirugumi.space/minigame/pixel-duel/ (variable)
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      skip_build:
+        description: Re-upload the existing build instead of rebuilding
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-web
@@ -14,41 +28,72 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
+      PUBLIC_BASE: ${{ vars.PUBLIC_BASE || 'https://mirugumi.space/minigame/pixel-duel/' }}
+      SKIP_BUILD: ${{ inputs.skip_build && '1' || '0' }}
     steps:
+      - name: Check deploy settings
+        run: |
+          set -e
+          missing=""
+          [ -n "$DEPLOY_HOST" ] || missing="$missing DEPLOY_HOST"
+          [ -n "$DEPLOY_USER" ] || missing="$missing DEPLOY_USER"
+          if [ -z "$DEPLOY_SSH_KEY" ] && [ -z "$DEPLOY_PASSWORD" ]; then
+            missing="$missing DEPLOY_SSH_KEY|DEPLOY_PASSWORD"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secrets:$missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+          echo "deploying to $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_ROOT"
+
       - name: Prepare SSH
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -e
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            echo "SSH_OPTS=-i ~/.ssh/deploy_key -o IdentitiesOnly=yes" >> "$GITHUB_ENV"
           else
-            ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass >/dev/null
+            echo "SSH_OPTS=-o PreferredAuthentications=password -o PubkeyAuthentication=no" >> "$GITHUB_ENV"
+            echo "USE_SSHPASS=1" >> "$GITHUB_ENV"
           fi
+          echo "StrictHostKeyChecking=accept-new" > ~/.ssh/config
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Server pulls and releases
         id: release
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -e
-          OUT=$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -lc 'set -e; mkdir -p /home/deploy/build; cd /home/deploy/build; \
-              if [ ! -d pixel-duel/.git ]; then git clone https://github.com/ShearPlume/pixel-duel.git; fi; \
-              cd pixel-duel; git fetch --prune origin; git clean -fd; git reset --hard origin/main; \
-              bash scripts/release_web.sh'" 2>&1)
+          REMOTE="set -e
+            mkdir -p $DEPLOY_ROOT
+            cd $DEPLOY_ROOT
+            if [ ! -d pixel-duel/.git ]; then
+              git clone https://github.com/ShearPlume/pixel-duel.git pixel-duel
+            fi
+            cd pixel-duel
+            git fetch --prune origin
+            git reset --hard origin/main
+            git clean -fd
+            PUBLIC_BASE=$PUBLIC_BASE SKIP_BUILD=$SKIP_BUILD bash scripts/release_web.sh"
+          if [ -n "$USE_SSHPASS" ]; then
+            OUT=$(sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
+          else
+            OUT=$(ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
+          fi
           printf '%s\n' "$OUT"
           REV=$(printf '%s\n' "$OUT" | sed -n 's/^REVISION=//p' | tail -1)
           if [ -z "$REV" ]; then
-            echo "::error::no REVISION from the release script"
+            echo "::error::release script did not report a revision"
             exit 1
           fi
           echo "revision=$REV" >> "$GITHUB_OUTPUT"
@@ -57,12 +102,14 @@ jobs:
         env:
           REV: ${{ steps.release.outputs.revision }}
         run: |
-          for i in $(seq 1 10); do
-            if curl -fsS "https://mirugumi.space/minigame/pixel-duel/?t=$RANDOM" | grep -q "$REV"; then
-              echo "live at $REV"
+          set -e
+          for i in $(seq 1 12); do
+            if curl -fsS "${PUBLIC_BASE}?t=$RANDOM" | grep -q "$REV"; then
+              echo "live at $REV -> $PUBLIC_BASE"
               exit 0
             fi
-            sleep 6
+            sleep 5
           done
-          echo "::error::live page still does not reference $REV"
+          echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
           exit 1
+

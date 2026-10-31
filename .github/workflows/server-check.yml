@@ -1,0 +1,52 @@
+name: Server check
+
+# Manual diagnostics for the deploy box: verifies the SSH account, the Godot
+# binary + web templates, the coscmd profile and where the site lives. Run it
+# from the Actions tab before trusting the deploy workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
+    steps:
+      - name: Prepare SSH
+        run: |
+          set -e
+          install -m 700 -d ~/.ssh
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            echo "SSH_OPTS=-i ~/.ssh/deploy_key -o IdentitiesOnly=yes" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass >/dev/null
+            echo "SSH_OPTS=-o PreferredAuthentications=password -o PubkeyAuthentication=no" >> "$GITHUB_ENV"
+            echo "USE_SSHPASS=1" >> "$GITHUB_ENV"
+          fi
+          echo "StrictHostKeyChecking=accept-new" > ~/.ssh/config
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Inspect
+        run: |
+          set -e
+          REMOTE='echo "== whoami =="; whoami; id
+            echo "== deploy root =="; ls -la '"$DEPLOY_ROOT"' 2>&1 | head -20
+            echo "== godot =="; ls -la '"$DEPLOY_ROOT"'/tools 2>&1 | head -10
+            echo "== templates =="; ls '"$DEPLOY_ROOT"'/xdg/data/godot/export_templates 2>&1
+            echo "== coscmd =="; which coscmd; ls -l ~/.cos-minigame.conf 2>&1
+            echo "== tools =="; which git godot python3 node nginx 2>&1
+            echo "== site =="; ls -la /home/admin/mirugumi.space 2>&1 | head -25
+            echo "== nginx minigame/game =="; (nginx -T 2>/dev/null || sudo -n nginx -T 2>/dev/null) | grep -nE "server_name|location .*(minigame|game)" | head -40'
+          if [ -n "$USE_SSHPASS" ]; then
+            sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE"
+          else
+            ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE"
+          fi
