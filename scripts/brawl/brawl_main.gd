@@ -17,6 +17,7 @@ const HeartPickup = preload("res://scripts/brawl/heart_pickup.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
 const NetClient = preload("res://scripts/net/net_client.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
+const RtcLink = preload("res://scripts/net/rtc_link.gd")
 
 const VIEW_W := 640.0
 const VIEW_H := 360.0
@@ -102,6 +103,9 @@ var lan_slot := 0
 var _remote_bits := {}
 var _remote_prev := {}
 var _snapshot := {}
+## Game traffic goes peer-to-peer once WebRTC connects; the relay is only the
+## signalling channel and the fallback.
+var link: Node = null
 ## Bullets a guest replays for itself: the host owns the hits, the guest only has
 ## to draw the same thing in the same place.
 var _guest_bullets: Array = []
@@ -422,7 +426,7 @@ func _send_fx(event: Dictionary) -> void:
 	if lan_role != "host" or net == null:
 		return
 	event["t"] = "fx"
-	net.send_data(event)
+	_send(event)
 
 
 func _play_sfx(key: String, at: Vector2) -> void:
@@ -517,10 +521,36 @@ func _setup_lan() -> void:
 	if net == null:
 		push_warning("LAN match without a socket, falling back to local play")
 		return
-	net.data_received.connect(_on_net_data)
+	# One data channel per pair, so P2P is used for one-on-one matches; rooms
+	# with more players stay on the relay and keep working.
+	if MatchConfig.lan_players <= 2:
+		link = RtcLink.new(net, lan_slot)
+		link.name = "RtcLink"
+		get_tree().root.add_child.call_deferred(link)
+		link.data_received.connect(_on_net_data)
+		link.opened.connect(_on_link_opened)
 	net.peer_left.connect(_on_lan_peer_left)
 	net.closed.connect(_on_lan_closed)
 	_snapshot = {}
+
+func _exit_tree() -> void:
+	if link != null and is_instance_valid(link):
+		link.queue_free()
+		link = null
+
+
+func _on_link_opened() -> void:
+	if status != null:
+		status.text = "P2P 直连已建立，延迟更低"
+
+
+## Match packet out: direct to the peer once P2P is up, relay otherwise.
+func _send(payload: Dictionary) -> void:
+	if link != null:
+		link.send_data(payload)
+	elif net != null:
+		net.send_data(payload)
+
 
 func _on_net_data(from_slot: int, payload: Dictionary) -> void:
 	match String(payload.get("t", "")):
@@ -607,7 +637,7 @@ func _send_snapshot() -> void:
 	for pickup: Dictionary in items:
 		var at: Vector2 = pickup.position
 		pickups.append([String(pickup.kind), snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
-	net.send_data({"t": "s", "p": players, "i": pickups, "o": match_over})
+	_send({"t": "s", "p": players, "i": pickups, "o": match_over})
 
 
 func _guest_tick() -> void:
@@ -617,7 +647,7 @@ func _guest_tick() -> void:
 		if bits != _input_sent or _input_keepalive >= 12:
 			_input_sent = bits
 			_input_keepalive = 0
-			net.send_data({"t": "in", "b": bits})
+			_send({"t": "in", "b": bits})
 		if lan_slot < _item_latch.size():
 			_item_latch[lan_slot] = Input.is_action_pressed("p1_ranged")
 	# Predict the local fighter so the input response is immediate; the host's
@@ -1424,10 +1454,10 @@ func _hide_end_panel() -> void:
 func _rematch() -> void:
 	if lan_role == "guest":
 		if net != null:
-			net.send_data({"t": "rematch_req"})
+			_send({"t": "rematch_req"})
 		return
 	if lan_role == "host" and net != null:
-		net.send_data({"t": "rematch"})
+		_send({"t": "rematch"})
 	_hide_end_panel()
 	get_tree().reload_current_scene()
 
