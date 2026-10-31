@@ -68,11 +68,9 @@ func play(key: String, at: Vector2) -> void:
 	if entry.is_empty() or not _throttle(key, entry):
 		return
 	var player := _take(_world, "world")
-	var gain := 0.0
+	var gain := 1.0
 	var camera := get_viewport().get_camera_2d()
-	if camera == null:
-		gain = 0.0
-	else:
+	if camera != null:
 		var distance := camera.global_position.distance_to(at)
 		gain = clampf(1.0 - distance / 900.0, 0.0, 1.0)
 	if gain <= 0.02:

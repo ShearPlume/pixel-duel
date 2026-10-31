@@ -95,6 +95,8 @@ var _gear: Sprite2D
 var _gear_block: ColorRect
 var swing_clock := 0.0
 var swing_total := 0.0
+## Last crouch state the visuals used, so a host can tell its guests about it.
+var crouch_pose := false
 var charge_ratio := 0.0
 var drop_clock := 0.0
 var ground_soft := false
@@ -326,6 +328,15 @@ func play_item_swing(duration: float = 0.22) -> void:
 	swing_clock = maxf(swing_clock, duration)
 	swing_total = maxf(swing_total, duration)
 
+
+## What the last frame drew, so the host can replay it on the guests.
+func crouching_now() -> bool:
+	return crouch_pose
+
+
+func swinging() -> bool:
+	return swing_clock > 0.0
+
 ## Returns false when the item cannot fire right now.
 func consume_ammo() -> bool:
 	if item == "" or ammo <= 0 or item_cooldown > 0.0:
@@ -373,6 +384,7 @@ func _update_visuals(command: Dictionary) -> void:
 	# Standing on a conveyor counts as walking even without input.
 	var drift := vel.x + (ground_push if on_ground else 0.0)
 	var clip := "idle"
+	crouch_pose = on_ground and bool(command.get("crouch", false)) and attack == ""
 	if hitstun > 0.0:
 		clip = "hurt-air" if not on_ground else "hurt"
 	elif attack != "":
@@ -383,7 +395,7 @@ func _update_visuals(command: Dictionary) -> void:
 		clip = "jump" if vel.y < 0.0 else "jump-fall"
 	elif land_clock > 0.0:
 		clip = "land"
-	elif on_ground and bool(command.get("crouch", false)):
+	elif crouch_pose:
 		clip = "crouch"
 	elif _sprite.sprite_frames.has_animation("item-hold") and item != "" and absf(move) <= 0.1:
 		clip = "item-hold"

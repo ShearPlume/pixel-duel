@@ -102,6 +102,13 @@ var lan_slot := 0
 var _remote_bits := {}
 var _remote_prev := {}
 var _snapshot := {}
+## Bullets a guest replays for itself: the host owns the hits, the guest only has
+## to draw the same thing in the same place.
+var _guest_bullets: Array = []
+## End-of-match panel, parented to the window so it works on phones too (the
+## match itself may run inside a SubViewport that does not take input).
+var _end_layer: CanvasLayer = null
+var _end_title: Label = null
 var _lan_pickups: Array = []
 var _lan_pickup_state := ""
 var _result_reported := false
@@ -379,6 +386,93 @@ func _step_fixed() -> void:
 	if lan_role == "host" and net != null and ticks % SNAPSHOT_EVERY == 0:
 		_send_snapshot()
 
+## Keep every screen identical: whatever the host spawns or plays is mirrored
+## to the guests, which replay it without simulating damage.
+func _send_fx(event: Dictionary) -> void:
+	if lan_role != "host" or net == null:
+		return
+	event["t"] = "fx"
+	net.send_data(event)
+
+
+func _play_sfx(key: String, at: Vector2) -> void:
+	_sfx.play(key, at)
+	_send_fx({"k": "sfx", "n": key, "x": at.x, "y": at.y})
+
+
+func _apply_fx(event: Dictionary) -> void:
+	if lan_role != "guest":
+		return
+	var at := Vector2(float(event.get("x", 0.0)), float(event.get("y", 0.0)))
+	match String(event.get("k", "")):
+		"sfx":
+			_sfx.play(String(event.get("n", "")), at)
+		"slash":
+			var slash := SlashEffect.new()
+			slash.radius = float(event.get("r", 86.0))
+			slash.inner = float(event.get("i", 22.0))
+			slash.facing = int(event.get("f", 1))
+			slash.total = float(event.get("d", 0.2))
+			slash.color = Color(String(event.get("c", "efe4ff")))
+			slash.position = at
+			add_child(slash)
+		"burst":
+			var burst := BurstEffect.new()
+			burst.color = Color(String(event.get("c", "ffd166")))
+			burst.radius = float(event.get("r", 60.0))
+			burst.total = float(event.get("d", 0.24))
+			burst.filled = bool(event.get("fl", true))
+			burst.position = at
+			add_child(burst)
+		"shot":
+			var node := ShotVisual.new()
+			node.kind = String(event.get("s", "bullet"))
+			node.radius = float(event.get("r", 4.0))
+			node.hue = Color(String(event.get("c", "ffe066")))
+			node.position = at
+			add_child(node)
+			_guest_bullets.append({
+				"node": node,
+				"x": at.x,
+				"y": at.y,
+				"vx": float(event.get("vx", 0.0)),
+				"vy": float(event.get("vy", 0.0)),
+				"g": float(event.get("g", 0.0)),
+				"b": float(event.get("b", 0.0)),
+				"w": float(event.get("w", 0.0)),
+				"wr": float(event.get("wr", 6.0)),
+				"life": float(event.get("l", 1.1)),
+				"age": 0.0,
+			})
+		_:
+			pass
+
+
+## Guest-side bullet motion, mirroring the host's step so the pictures match.
+func _update_guest_bullets() -> void:
+	for shot: Dictionary in _guest_bullets.duplicate():
+		shot.life = float(shot.life) - FIXED_DT
+		shot.age = float(shot.age) + FIXED_DT
+		var previous_y := float(shot.y)
+		shot.vy = float(shot.vy) + float(shot.g) * FIXED_DT
+		shot.x = float(shot.x) + float(shot.vx) * FIXED_DT
+		shot.y = float(shot.y) + float(shot.vy) * FIXED_DT
+		if float(shot.w) != 0.0:
+			shot.y = float(shot.y) + sin(float(shot.age) * float(shot.wr)) * float(shot.w) * FIXED_DT
+		if float(shot.b) > 0.0 and float(shot.vy) >= 0.0:
+			for platform: Rect2 in Stage.PLATFORMS:
+				if float(shot.x) < platform.position.x - 6.0 or float(shot.x) > platform.end.x + 6.0:
+					continue
+				if previous_y <= platform.position.y and float(shot.y) >= platform.position.y:
+					shot.y = platform.position.y - 5.0
+					shot.vy = -absf(float(shot.vy)) * float(shot.b)
+		var node: Node2D = shot["node"]
+		node.position = Vector2(float(shot.x), float(shot.y)).round()
+		if float(shot.life) <= 0.0 or float(shot.y) > 420.0:
+			node.queue_free()
+			_guest_bullets.erase(shot)
+
+
 func _setup_lan() -> void:
 	net = MatchConfig.net
 	if net == null:
@@ -397,6 +491,15 @@ func _on_net_data(from_slot: int, payload: Dictionary) -> void:
 		"s":
 			if lan_role == "guest":
 				_snapshot = payload
+		"fx":
+			_apply_fx(payload)
+		"rematch":
+			if lan_role == "guest":
+				_hide_end_panel()
+				get_tree().reload_current_scene()
+		"rematch_req":
+			if lan_role == "host":
+				_rematch()
 		_:
 			pass
 
@@ -459,6 +562,7 @@ func _send_snapshot() -> void:
 			snappedf(brawler.hp, 0.5), brawler.stocks, 1 if brawler.alive else 0,
 			String(brawler.attack), String(brawler.item),
 			1 if brawler.hitstun > 0.0 else 0, 1 if brawler.invuln > 0.0 else 0,
+			1 if brawler.crouching_now() else 0, 1 if brawler.swinging() else 0,
 		])
 	var pickups: Array = []
 	for pickup: Dictionary in items:
@@ -476,6 +580,7 @@ func _guest_tick() -> void:
 	# snapshot then pulls it back into sync.
 	_predict_local()
 	_apply_snapshot()
+	_update_guest_bullets()
 
 
 ## Guests run only their own fighter; everything else comes from snapshots.
@@ -521,7 +626,11 @@ func _apply_snapshot() -> void:
 		brawler.item = String(entry[11])
 		brawler.hitstun = 1.0 if bool(entry[12]) else 0.0
 		brawler.invuln = 1.0 if bool(entry[13]) else 0.0
-		brawler._update_visuals({})
+		var crouching := entry.size() > 14 and bool(entry[14])
+		if entry.size() > 15 and bool(entry[15]):
+			brawler.swing_clock = maxf(brawler.swing_clock, 0.12)
+			brawler.swing_total = maxf(brawler.swing_total, 0.22)
+		brawler._update_visuals({"crouch": crouching})
 	match_over = bool(_snapshot.get("o", false))
 	_sync_lan_pickups(_snapshot.get("i", []))
 
@@ -600,13 +709,13 @@ func _command(index: int) -> Dictionary:
 
 ## Sound hooks: one handler per brawler signal, all positional.
 func _on_jumped(double_jump: bool, brawler: Node2D) -> void:
-	_sfx.play("jump_double" if double_jump else "jump", brawler.position)
+	_play_sfx("jump_double" if double_jump else "jump", brawler.position)
 
 func _on_landed(brawler: Node2D) -> void:
-	_sfx.play("land", brawler.position)
+	_play_sfx("land", brawler.position)
 
 func _on_struck(damage: float, brawler: Node2D) -> void:
-	_sfx.play("hit_heavy" if damage >= 10.0 else "hit_light", brawler.body_rect().get_center())
+	_play_sfx("hit_heavy" if damage >= 10.0 else "hit_light", brawler.body_rect().get_center())
 
 
 ## Minimal opponent for touch play: close the gap, jump when the target is
@@ -680,7 +789,7 @@ func _update_items() -> void:
 					brawler.position.x, brawler.position.y - 30.0):
 				continue
 			brawler.give_item(String(item.kind), int(Items.config(String(item.kind))["rounds"]))
-			_sfx.play("pickup", brawler.position)
+			_play_sfx("pickup", brawler.position)
 			item.node.queue_free()
 			items.erase(item)
 			break
@@ -700,7 +809,7 @@ func _update_hearts() -> void:
 			if centre.distance_to(heart.position) > 46.0:
 				continue
 			brawler.heal(HEART_HEAL)
-			_sfx.play("heart", heart.position)
+			_play_sfx("heart", heart.position)
 			_burst(heart.position, Color("ff6f91"), 26.0, 0.22)
 			heart.node.queue_free()
 			hearts.erase(heart)
@@ -777,16 +886,16 @@ func _use_item(index: int) -> void:
 	match String(config["type"]):
 		"melee":
 			_melee_swing(index, config)
-			_sfx.play("guitar_swing", brawler.position)
+			_play_sfx("guitar_swing", brawler.position)
 		"grenade":
 			_throw_grenade(index, config)
-			_sfx.play("cake_throw", brawler.muzzle_point())
+			_play_sfx("cake_throw", brawler.muzzle_point())
 		"homing":
 			_spawn_shot(index, config, "homing")
-			_sfx.play("bubble_fire", brawler.muzzle_point())
+			_play_sfx("bubble_fire", brawler.muzzle_point())
 		_:
 			_spawn_shot(index, config, "projectile")
-			_sfx.play("pistol", brawler.muzzle_point())
+			_play_sfx("pistol", brawler.muzzle_point())
 
 func _melee_swing(index: int, config: Dictionary) -> void:
 	var brawler: Node2D = brawlers[index]
@@ -801,6 +910,9 @@ func _melee_swing(index: int, config: Dictionary) -> void:
 	slash.total = duration
 	slash.position = brawler.position + Vector2(0.0, -52.0)
 	add_child(slash)
+	_send_fx({"k": "slash", "x": slash.position.x, "y": slash.position.y,
+		"r": slash.radius, "i": slash.inner, "f": slash.facing, "d": duration,
+		"c": Color(slash.color).to_html()})
 	# The swing sweeps a wide arc, so it hits everyone inside it, not just the
 	# closest target.
 	var zone := Rect2(
@@ -821,7 +933,7 @@ func _melee_swing(index: int, config: Dictionary) -> void:
 		# The string chord sits on the first thing the guitar connects with,
 		# while the cleave itself still hits everybody in the arc.
 		if not sounded:
-			_sfx.play("guitar_hit", target.body_rect().get_center())
+			_play_sfx("guitar_hit", target.body_rect().get_center())
 			sounded = true
 
 func _throw_grenade(index: int, config: Dictionary, ratio: float = 0.0) -> void:
@@ -861,6 +973,12 @@ func _spawn_shot(index: int, config: Dictionary, type: String) -> void:
 	node.hue = config["color"]
 	node.position = from
 	add_child(node)
+	_send_fx({"k": "shot", "x": from.x, "y": from.y,
+		"vx": float(brawler.facing) * float(config["speed"]), "vy": 0.0,
+		"s": node.kind, "r": node.radius, "c": Color(node.hue).to_html(),
+		"g": float(config.get("gravity", 0.0)), "b": float(config.get("bounce", 0.0)),
+		"w": float(config.get("wobble", 0.0)), "wr": float(config.get("wobble_rate", 6.0)),
+		"l": float(config.get("life", 1.1))})
 	_spawn_muzzle_flash(from, config)
 	bullets.append({
 		"type": type,
@@ -876,13 +994,7 @@ func _spawn_shot(index: int, config: Dictionary, type: String) -> void:
 	})
 
 func _spawn_muzzle_flash(at: Vector2, config: Dictionary) -> void:
-	var flash := BurstEffect.new()
-	flash.color = config["color"]
-	flash.radius = 13.0
-	flash.total = 0.10
-	flash.filled = false
-	flash.position = at
-	add_child(flash)
+	_burst(at, config["color"], 13.0, 0.10, false)
 
 func _update_bullets() -> void:
 	for shot: Dictionary in bullets.duplicate():
@@ -943,7 +1055,7 @@ func _pop_bubble(shot: Dictionary) -> void:
 	var radius := float(config.get("pop_radius", 54.0))
 	var at := Vector2(float(shot.x), float(shot.y))
 	_burst(at, config["color"], radius, 0.24)
-	_sfx.play("bubble_pop", at)
+	_play_sfx("bubble_pop", at)
 	for index in range(brawlers.size()):
 		if index == int(shot.owner):
 			continue
@@ -999,7 +1111,7 @@ func _step_grenade(shot: Dictionary) -> void:
 func _explode(at_x: float, at_y: float, config: Dictionary, owner: int) -> void:
 	var radius := float(config["radius"])
 	_burst(Vector2(at_x, at_y), Color("ffd166"), radius, 0.30)
-	_sfx.play("explosion", Vector2(at_x, at_y))
+	_play_sfx("explosion", Vector2(at_x, at_y))
 	for index in range(brawlers.size()):
 		if index == owner:
 			continue
@@ -1014,13 +1126,16 @@ func _explode(at_x: float, at_y: float, config: Dictionary, owner: int) -> void:
 		target.take_hit(float(config["damage"]) * (0.55 + 0.45 * falloff), float(config["kb_base"]),
 			float(config["kb_scale"]), float(config["angle"]), 1 if delta.x >= 0.0 else -1)
 
-func _burst(at: Vector2, color: Color, radius: float, total: float) -> void:
+func _burst(at: Vector2, color: Color, radius: float, total: float, filled: bool = true) -> void:
 	var burst := BurstEffect.new()
 	burst.color = color
 	burst.radius = radius
 	burst.total = total
+	burst.filled = filled
 	burst.position = at
 	add_child(burst)
+	_send_fx({"k": "burst", "x": at.x, "y": at.y, "c": color.to_html(), "r": radius,
+		"d": total, "fl": filled})
 
 func _nearest_target(owner: int, from: Vector2) -> Node2D:
 	var best: Node2D = null
@@ -1084,7 +1199,7 @@ func _check_blast_zones() -> void:
 		brawler.alive = false
 		brawler.visible = false
 		brawler.stocks -= 1
-		_sfx.play("ko", brawler.position)
+		_play_sfx("ko", brawler.position)
 		_respawn[index] = RESPAWN_DELAY
 
 func _tick_respawn(index: int, brawler: Node2D) -> void:
@@ -1093,7 +1208,7 @@ func _tick_respawn(index: int, brawler: Node2D) -> void:
 	_respawn[index] = maxf(0.0, float(_respawn[index]) - FIXED_DT)
 	if float(_respawn[index]) <= 0.0:
 		brawler.spawn(Stage.SPAWNS[index % Stage.SPAWNS.size()])
-		_sfx.play("respawn", brawler.position)
+		_play_sfx("respawn", brawler.position)
 
 func _check_match_end() -> void:
 	var standing := 0
@@ -1101,6 +1216,8 @@ func _check_match_end() -> void:
 		if brawler.stocks > 0:
 			standing += 1
 	if standing <= 1:
+		if not match_over:
+			_show_end_panel()
 		match_over = true
 		if lan_role == "host" and net != null and not _result_reported:
 			_result_reported = true
@@ -1165,8 +1282,121 @@ func _update_hud() -> void:
 	else:
 		status.text = "P1/P2 键盘　-　P3-P5 手柄　-　按 F5 重新选人"
 
+## Winner screen: a rematch or a way back to the lobby, both big enough to tap.
+func _show_end_panel() -> void:
+	if _end_layer != null:
+		return
+	var winner: Node2D = null
+	for brawler: Node2D in brawlers:
+		if brawler.stocks > 0:
+			winner = brawler
+
+	var layer := CanvasLayer.new()
+	layer.layer = 40
+	get_tree().root.add_child(layer)
+	_end_layer = layer
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.01, 0.05, 0.78)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(centre)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 16)
+	centre.add_child(column)
+
+	_end_title = Label.new()
+	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_end_title.add_theme_font_size_override("font_size", 34)
+	_end_title.add_theme_color_override("font_color", Color("f2e9ff"))
+	_end_title.text = _winner_text(winner)
+	column.add_child(_end_title)
+
+	var detail := Label.new()
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.add_theme_font_size_override("font_size", 16)
+	detail.add_theme_color_override("font_color", Color("a99cc4"))
+	detail.text = "联机对局" if MatchConfig.is_lan() else "本地对局"
+	column.add_child(detail)
+
+	var again := Button.new()
+	again.text = "再战一局"
+	again.custom_minimum_size = Vector2(240.0, 56.0)
+	again.add_theme_font_size_override("font_size", 20)
+	again.pressed.connect(_rematch)
+	column.add_child(again)
+
+	var back := Button.new()
+	back.text = "返回大厅" if MatchConfig.is_lan() else "重新选人"
+	back.custom_minimum_size = Vector2(240.0, 56.0)
+	back.add_theme_font_size_override("font_size", 20)
+	back.pressed.connect(_leave_match)
+	column.add_child(back)
+
+	if MatchConfig.is_lan() and MatchConfig.lan_role == "guest":
+		var note := Label.new()
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note.add_theme_font_size_override("font_size", 14)
+		note.add_theme_color_override("font_color", Color("8f7fac"))
+		note.text = "点「再战一局」会请房主重开"
+		column.add_child(note)
+
+
+func _winner_text(winner: Node2D) -> String:
+	if winner == null:
+		return "平局"
+	var slot: int = winner.player_index
+	var names := ["Yoru", "Nayu", "Hanami", "Kana", "Mosaki"]
+	var character: String = names[slot % names.size()]
+	if MatchConfig.characters.size() > slot:
+		var path := String(MatchConfig.characters[slot])
+		character = path.get_file().capitalize()
+	return "P%d 获胜
+%s" % [slot + 1, character]
+
+
+func _hide_end_panel() -> void:
+	if _end_layer == null:
+		return
+	_end_layer.queue_free()
+	_end_layer = null
+	_end_title = null
+
+
+func _rematch() -> void:
+	if lan_role == "guest":
+		if net != null:
+			net.send_data({"t": "rematch_req"})
+		return
+	if lan_role == "host" and net != null:
+		net.send_data({"t": "rematch"})
+	_hide_end_panel()
+	get_tree().reload_current_scene()
+
+
+func _leave_match() -> void:
+	_hide_end_panel()
+	if MatchConfig.is_lan():
+		MatchConfig.clear_lan()
+		get_tree().change_scene_to_file("res://scenes/lan.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/select.tscn")
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		if match_over and (event as InputEventKey).physical_keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
+			_rematch()
+			return
+		if match_over and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+			_leave_match()
+			return
 		if (event as InputEventKey).physical_keycode == KEY_F5:
 			if MatchConfig.is_lan():
 				MatchConfig.clear_lan()

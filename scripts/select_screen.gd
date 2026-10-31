@@ -37,6 +37,10 @@ const Portrait = preload("res://scripts/ui/portrait.gd")
 
 var _sfx: Node
 var _touch := false
+## Single player is two steps: pick yourself, then pick the CPU opponent.
+var _picking_enemy := false
+var _title: Label
+var _hint: Label
 
 func _ready() -> void:
 	_sfx = Sfx.new()
@@ -56,11 +60,10 @@ func _ready() -> void:
 			"joined": i < MIN_PLAYERS,
 			"index": i % CHARACTERS.size(),
 			"ready": false,
+			"cpu": false,
 		})
-	if _touch:
-		_slots[1]["joined"] = true
-		_slots[1]["ready"] = true
 	_refresh()
+	_update_prompt()
 
 func _build() -> void:
 	var sky := ColorRect.new()
@@ -69,10 +72,10 @@ func _build() -> void:
 	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(sky)
 
-	var title := _label("选择角色", Vector2(0.0, 20.0), 22, Color("f2e9ff"))
-	title.size = Vector2(640.0, 30.0)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(title)
+	_title = _label("选择你的角色", Vector2(0.0, 20.0), 22, Color("f2e9ff"))
+	_title.size = Vector2(640.0, 30.0)
+	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_title)
 
 	var total := float(CHARACTERS.size()) * CARD_W + float(CHARACTERS.size() - 1) * GAP
 	var start_x := (640.0 - total) * 0.5
@@ -133,14 +136,10 @@ func _build() -> void:
 		add_child(state)
 		_states.append(state)
 
-	var hint := _label(
-		"摇杆挑选角色，点 B 确认" if _touch else
-		"P1  A/D 移动  J 确认　　P2  ←/→ 移动  Enter 确认　　P3-P5  按跳跃键加入",
-		Vector2(0.0, 328.0), 11, Color("8f7fac")
-	)
-	hint.size = Vector2(640.0, 18.0)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(hint)
+	_hint = _label("", Vector2(0.0, 328.0), 11, Color("8f7fac"))
+	_hint.size = Vector2(640.0, 18.0)
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_hint)
 
 	var lan_button := Button.new()
 	lan_button.text = "联机"
@@ -174,6 +173,32 @@ func _label(text: String, at: Vector2, size: int, color: Color) -> Label:
 func _process(delta: float) -> void:
 	if _starting:
 		return
+	# Step 2 of single player: the enemy has been picked, only confirm is left.
+	if _picking_enemy:
+		var enemy: Dictionary = _slots[1]
+		if Input.is_action_just_pressed("p1_left"):
+			enemy["index"] = (int(enemy["index"]) + CHARACTERS.size() - 1) % CHARACTERS.size()
+			_sfx.play_ui("select_move")
+			_refresh()
+		if Input.is_action_just_pressed("p1_right"):
+			enemy["index"] = (int(enemy["index"]) + 1) % CHARACTERS.size()
+			_sfx.play_ui("select_move")
+			_refresh()
+		if Input.is_action_just_pressed("p1_light"):
+			enemy["joined"] = true
+			enemy["ready"] = true
+			enemy["cpu"] = true
+			_slots[0]["ready"] = true
+			_picking_enemy = false
+			_sfx.play_ui("select_confirm")
+			_refresh()
+		elif Input.is_action_just_pressed("p1_crouch"):
+			_picking_enemy = false
+			_slots[0]["ready"] = false
+			_sfx.play_ui("select_move")
+			_refresh()
+		_update_start(delta)
+		return
 	var changed := false
 	for p in range(MAX_PLAYERS):
 		var slot: Dictionary = _slots[p]
@@ -196,6 +221,10 @@ func _process(delta: float) -> void:
 		if Input.is_action_just_pressed(prefix + "light"):
 			slot["ready"] = not bool(slot["ready"])
 			_sfx.play_ui("select_confirm")
+			# Nobody else joined: pick a CPU opponent next instead of waiting.
+			if p == 0 and bool(slot["ready"]) and _human_players() == 1:
+				_picking_enemy = true
+				_update_prompt()
 			changed = true
 		if Input.is_action_just_pressed(prefix + "crouch"):
 			if bool(slot["ready"]):
@@ -208,6 +237,30 @@ func _process(delta: float) -> void:
 		_refresh()
 	_update_start(delta)
 
+
+## How many slots are driven by a human right now; the CPU opponent does not
+## count, so a single player gets to choose it.
+func _human_players() -> int:
+	var count := 0
+	for slot: Dictionary in _slots:
+		if bool(slot["joined"]):
+			count += 1
+	return count
+
+## Keeps the title / hint in step with the two-step flow.
+func _update_prompt() -> void:
+	if _title == null or _hint == null:
+		return
+	if _picking_enemy:
+		_title.text = "选择对手"
+		_hint.text = ("摇杆挑对手，点 B 开始对局" if _touch else
+			"←/→ 挑对手　J 开始对局　S 返回上一步")
+		return
+	_title.text = "选择你的角色"
+	_hint.text = ("摇杆挑角色，点 B 确认" if _touch else
+		"P1  A/D 挑角色  J 确认　　P2  ←/→ 挑角色  Enter 确认　　P3-P5  按跳跃键加入")
+
+
 func _refresh() -> void:
 	var ready_cards := {}
 	for p in range(MAX_PLAYERS):
@@ -219,7 +272,7 @@ func _refresh() -> void:
 		if not bool(slot["joined"]):
 			continue
 		var x := _card_x(int(slot["index"]))
-		tag.text = "P%d" % (p + 1)
+		tag.text = "对手" if bool(slot.get("cpu", false)) else "P%d" % (p + 1)
 		tag.position = Vector2(x + 4.0, TOP - 18.0)
 		state.position = Vector2(x + CARD_W * 0.5 - 30.0, TOP - 18.0)
 		state.text = "已就绪" if bool(slot["ready"]) else ""

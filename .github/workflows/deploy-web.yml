@@ -10,7 +10,7 @@ name: Deploy web
 #   DEPLOY_SSH_KEY   private key matching authorized_keys (secret, preferred)
 #   DEPLOY_PASSWORD  account password when no key is used (secret, optional)
 #   DEPLOY_ROOT      /home/deploy/build                 (variable, optional)
-#   PUBLIC_BASE      https://mirugumi.space/minigame/idolbrawl/ (variable)
+#   PUBLIC_BASE      https://mirugumi-space-1382800327.cos.ap-guangzhou.myqcloud.com/minigame/idolbrawl/ (variable)
 on:
   push:
     branches: [main]
@@ -36,7 +36,7 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/deploy/build' }}
-      PUBLIC_BASE: ${{ vars.PUBLIC_BASE || 'https://mirugumi.space/minigame/idolbrawl/' }}
+      PUBLIC_BASE: ${{ vars.PUBLIC_BASE || 'https://mirugumi-space-1382800327.cos.ap-guangzhou.myqcloud.com/minigame/idolbrawl/' }}
       SKIP_BUILD: ${{ inputs.skip_build && '1' || '0' }}
       GODOT_BIN: ${{ vars.GODOT_BIN }}
       XDG_DATA_HOME_OVERRIDE: ${{ vars.XDG_DATA_HOME }}

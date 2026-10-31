@@ -5,7 +5,7 @@
 #
 #   bash scripts/release_web.sh                # build + upload
 #   SKIP_BUILD=1 bash scripts/release_web.sh   # re-upload the existing build
-#   PUBLIC_BASE=https://mirugumi.space/minigame/idolbrawl/ bash scripts/release_web.sh
+#   PUBLIC_BASE=https://mirugumi-space-1382800327.cos.ap-guangzhou.myqcloud.com/minigame/idolbrawl/ bash scripts/release_web.sh
 #
 # Requires on the server: Godot 4.6.3 + export templates (XDG_DATA_HOME) and a
 # coscmd profile for the mirror bucket (default ~/.cos-minigame.conf).
@@ -21,7 +21,7 @@ export PYTHONUTF8=1
 
 COSCONF="${COS_CONF:-$HOME/.cos-minigame.conf}"
 BUCKET_PATH="${BUCKET_PATH:-/minigame/idolbrawl}"
-PUBLIC_BASE="${PUBLIC_BASE:-https://mirugumi.space/minigame/idolbrawl/}"
+PUBLIC_BASE="${PUBLIC_BASE:-https://mirugumi-space-1382800327.cos.ap-guangzhou.myqcloud.com/minigame/idolbrawl/}"
 
 cd "$ROOT"
 
