@@ -26,10 +26,10 @@ cd "$REPO/server"
 ls -d node_modules/ws >/dev/null 2>&1 && echo "ws module present" || echo "ws module MISSING (npm install in $REPO/server)"
 
 section "nginx container"
-CONTAINER="$(docker ps --format '{{.ID}} {{.Image}} {{.Ports}}' | grep -E ':(80|443)->' | head -1 | awk '{print $1}')"
+CONTAINER="$(docker ps --format '{{.ID}} {{.Image}} {{.Ports}}' 2>/dev/null | grep -E ':(80|443)->' | head -1 | awk '{print $1}')"
 if [ -z "$CONTAINER" ]; then
-  echo "no container publishing 80/443"
-  docker ps --format '{{.ID}} {{.Image}} {{.Ports}}' | head -10
+  echo "no docker access or no container publishing 80/443 (run as root for the full setup)"
+  if [ "$(id -u)" != "0" ]; then exit 0; fi
   exit 1
 fi
 docker ps --format '{{.ID}} {{.Image}} {{.Ports}}' | grep "$CONTAINER"
@@ -89,7 +89,8 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now "$NAME"
+systemctl enable "$NAME"
+systemctl restart "$NAME"
 sleep 1
 systemctl --no-pager --lines=5 status "$NAME" || true
 curl -fsS "http://127.0.0.1:$PORT/health" && echo
@@ -117,14 +118,37 @@ if root.is_file():
     files = [root]
 else:
     files = [p for p in root.rglob("*") if p.is_file() and p.name.endswith(".conf")]
+
+def server_blocks(text):
+    """Yield (start, end_exclusive) for each server { ... } block."""
+    for match in re.finditer(r"(^|\n)\s*server\s*\{", text):
+        depth = 0
+        index = match.end() - 1
+        while index < len(text):
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    yield match.start(), index + 1
+                    break
+            index += 1
+
 server_file = None
+span = None
 for path in files:
     text = path.read_text(errors="replace")
-    if re.search(r"server_name[^;]*mirugumi\.space", text):
-        server_file = path
+    if "mirugumi.space" not in text:
+        continue
+    for start, end in server_blocks(text):
+        block = text[start:end]
+        if re.search(r"server_name[^;]*mirugumi\.space", block) and "443" in block:
+            server_file, span = path, (start, end)
+            break
+    if server_file is not None:
         break
 if server_file is None:
-    print("no server block for mirugumi.space found under", root)
+    print("no TLS server block for mirugumi.space found under", root)
     raise SystemExit(0)
 
 text = server_file.read_text()
@@ -160,8 +184,9 @@ if block is None:
 """
     print("added a generic websocket location")
 
-# Insert before the last closing brace of the server block that owns the file.
-close = text.rstrip().rfind("}")
+# Insert just before the closing brace of the TLS server block.
+start, end = span
+close = text.rfind("}", start, end)
 patched = text[:close] + block + "\n" + text[close:]
 backup = server_file.with_suffix(server_file.suffix + ".bak." + time.strftime("%Y%m%d%H%M%S"))
 shutil.copy2(server_file, backup)
@@ -180,5 +205,7 @@ fi
 section "verify"
 curl -s -o /dev/null -w "local relay health: %{http_code}\n" "http://127.0.0.1:$PORT/health"
 curl -s -o /dev/null -w "public /$PATH_NAME: %{http_code}\n" -H "Connection: Upgrade" -H "Upgrade: websocket" "https://mirugumi.space/$PATH_NAME"
+
+
 
 
