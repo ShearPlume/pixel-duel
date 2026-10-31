@@ -1,4 +1,4 @@
-﻿extends Node2D
+extends Node2D
 ## Character select for 2-5 local players. Each joined player moves a cursor and
 ## locks a fighter; the match starts as soon as everybody joined is ready.
 
@@ -139,8 +139,8 @@ func _build() -> void:
 
 	var lan_button := Button.new()
 	lan_button.text = "LAN ROOM"
-	lan_button.position = Vector2(12.0, 288.0)
-	lan_button.size = Vector2(104.0, 26.0)
+	lan_button.position = Vector2(8.0, 6.0)
+	lan_button.size = Vector2(96.0, 22.0)
 	lan_button.add_theme_font_size_override("font_size", 11)
 	lan_button.pressed.connect(_open_lan)
 	add_child(lan_button)
@@ -258,6 +258,7 @@ func _start_match() -> void:
 		if bool(slot["joined"]):
 			MatchConfig.characters.append(CHARACTERS[int(slot["index"])])
 	get_tree().change_scene_to_file("res://scenes/brawl.tscn")
+
 
 
 

@@ -1,4 +1,4 @@
-﻿extends Control
+extends Control
 ## LAN room lobby: create or join a relay room (server/room_server.js), watch the
 ## slots fill up, and start a host-authoritative match for up to five players.
 ##
@@ -56,14 +56,14 @@ func _build() -> void:
 
 	_url_edit = LineEdit.new()
 	_url_edit.text = NetClient.default_url()
-	_url_edit.position = Vector2(120.0, 56.0)
+	_url_edit.position = Vector2(130.0, 46.0)
 	_url_edit.size = Vector2(400.0, 24.0)
 	_url_edit.add_theme_font_size_override("font_size", 11)
 	_url_edit.placeholder_text = "relay address"
 	add_child(_url_edit)
 
 	_status = Label.new()
-	_status.position = Vector2(120.0, 86.0)
+	_status.position = Vector2(120.0, 76.0)
 	_status.size = Vector2(400.0, 20.0)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.add_theme_font_size_override("font_size", 11)
@@ -72,7 +72,7 @@ func _build() -> void:
 	add_child(_status)
 
 	_login_box = VBoxContainer.new()
-	_login_box.position = Vector2(190.0, 112.0)
+	_login_box.position = Vector2(180.0, 132.0)
 	_login_box.size = Vector2(260.0, 170.0)
 	_login_box.add_theme_constant_override("separation", 4)
 	add_child(_login_box)
@@ -101,7 +101,7 @@ func _build() -> void:
 	_login_box.add_child(_answer_edit)
 
 	_rooms_box = VBoxContainer.new()
-	_rooms_box.position = Vector2(150.0, 120.0)
+	_rooms_box.position = Vector2(150.0, 138.0)
 	_rooms_box.size = Vector2(340.0, 120.0)
 	_rooms_box.add_theme_constant_override("separation", 4)
 	add_child(_rooms_box)
@@ -114,9 +114,11 @@ func _build() -> void:
 	_menu_buttons.append(_add_button(row, "CREATE ROOM", _on_create))
 	_menu_buttons.append(_add_button(row, "REFRESH", _on_refresh))
 	_menu_buttons.append(_add_button(row, "BACK", _on_back))
+	for button: Button in _menu_buttons:
+		button.visible = false
 
 	_room_box = VBoxContainer.new()
-	_room_box.position = Vector2(220.0, 120.0)
+	_room_box.position = Vector2(220.0, 112.0)
 	_room_box.size = Vector2(200.0, 190.0)
 	_room_box.add_theme_constant_override("separation", 3)
 	_room_box.visible = false
@@ -152,11 +154,12 @@ func _build() -> void:
 
 	var hint := Label.new()
 	hint.text = "Same Wi-Fi: host runs the relay (see server/room_server.js). Web: wss://mirugumi.space/idolbrawl-signal"
-	hint.position = Vector2(0.0, 330.0)
+	hint.position = Vector2(0.0, 196.0)
 	hint.size = Vector2(640.0, 16.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 9)
 	hint.add_theme_color_override("font_color", Color("6f6486"))
+	hint.visible = not DisplayServer.is_touchscreen_available()
 	add_child(hint)
 
 
@@ -411,6 +414,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_leave()
 			else:
 				_on_back()
+
+
 
 
 

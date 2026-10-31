@@ -37,6 +37,7 @@ try {
 }
 
 const PORT = Number(process.env.PORT || 8899);
+const HOST = process.env.HOST || '0.0.0.0';
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS || 5);
 const IDLE_MS = Number(process.env.IDLE_MS || 120000);
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

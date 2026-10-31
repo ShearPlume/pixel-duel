@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Expose the LAN relay to the internet through the containerised nginx.
 #
 # Run as root on the deploy host:
@@ -15,7 +15,12 @@ PORT="${PORT:-8899}"
 NAME="pixel-duel-relay"
 PATH_NAME="idolbrawl-signal"
 APPLY=0
-[ "${1:-}" = "--apply" ] && APPLY=1
+MODE="all"
+case "${1:-}" in
+  --apply) APPLY=1 ;;
+  --relay-only) APPLY=0; MODE="relay" ;;
+  --proxy-only) APPLY=1; MODE="proxy" ;;
+esac
 
 section() { echo; echo "== $* =="; }
 
@@ -56,6 +61,10 @@ if [ "$(id -u)" != "0" ]; then
   echo "run as root to install the unit"
   exit 0
 fi
+if [ "$MODE" = "proxy" ]; then
+  echo "skipping relay install (--proxy-only)"
+  NODE_BIN="$(command -v node || true)"
+else
 NODE_BIN="$(sudo -u "$RUN_USER" bash -lc 'command -v node' 2>/dev/null || true)"
 [ -z "$NODE_BIN" ] && NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ]; then
@@ -212,6 +221,7 @@ fi
 section "verify"
 curl -s -o /dev/null -w "local relay health: %{http_code}\n" "http://127.0.0.1:$PORT/health"
 curl -s -o /dev/null -w "public /$PATH_NAME: %{http_code}\n" -H "Connection: Upgrade" -H "Upgrade: websocket" "https://mirugumi.space/$PATH_NAME"
+
 
 
 
