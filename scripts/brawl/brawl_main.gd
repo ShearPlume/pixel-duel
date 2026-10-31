@@ -1,4 +1,4 @@
-﻿extends Node2D
+extends Node2D
 ## Brawl mode: 2-5 brawlers on a multi-platform stage, percent damage, KO by
 ## leaving the blast zone, camera follows everyone and zooms out as they spread.
 
@@ -72,6 +72,10 @@ var spawn_clock := 3.0
 var heart_clock := 5.0
 var _sfx: Node
 var _touch := false
+## Touch builds reserve the bottom band for controls, so the camera and zoom fit
+## the playfield above it instead of the whole window.
+const TOUCH_BAND := 136.0
+var _play_height := VIEW_H
 var _bot_clock := 0.0
 var _bot_attack_clock := 0.0
 var _bot_move := 0.0
@@ -102,6 +106,7 @@ func _ready() -> void:
 	# since a phone has only one player's worth of controls.
 	if TouchControls.is_touch_device():
 		_touch = true
+		_play_height = VIEW_H - TOUCH_BAND
 		add_child(TouchControls.new())
 	_build_stage()
 	_build_camera()
@@ -300,7 +305,7 @@ func _build_hud() -> void:
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(hud)
 	status = Label.new()
-	status.position = Vector2(8.0, 340.0)
+	status.position = Vector2(8.0, VIEW_H - TOUCH_BAND + 4.0 if _touch else 340.0)
 	status.add_theme_font_size_override("font_size", 9)
 	status.add_theme_color_override("font_color", Color("8f7fa8"))
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1085,10 +1090,12 @@ func _update_camera(delta: float) -> void:
 	var centre: Vector2 = (minimum + maximum) * 0.5
 	var spread: Vector2 = maximum - minimum
 	var needed: Vector2 = Vector2(maxf(260.0, spread.x + 300.0), maxf(200.0, spread.y + 260.0))
-	var zoom: float = clampf(minf(VIEW_W / needed.x, VIEW_H / needed.y), ZOOM_MIN, ZOOM_MAX)
+	var zoom: float = clampf(minf(VIEW_W / needed.x, _play_height / needed.y), ZOOM_MIN, ZOOM_MAX)
 	var blend := clampf(delta * 6.0, 0.0, 1.0)
 	camera.position = camera.position.lerp(centre, blend)
 	camera.zoom = camera.zoom.lerp(Vector2(zoom, zoom), blend)
+	# Push the world into the upper band so the controls own the bottom strip.
+	camera.offset = Vector2(0.0, -(VIEW_H - _play_height) * 0.5) if _touch else Vector2.ZERO
 	if _background != null:
 		# The backdrop is a world object drawn at 1:1, so it keeps its pixel size
 		# while zoom changes; only the pan is damped for parallax.
@@ -1127,6 +1134,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_tree().change_scene_to_file("res://scenes/lan.tscn")
 			else:
 				get_tree().change_scene_to_file("res://scenes/select.tscn")
+
 
 
 

@@ -1,4 +1,4 @@
-﻿extends CanvasLayer
+extends CanvasLayer
 ## On-screen controls for touch devices (phones, tablets, touch laptops, web).
 ##
 ## It drives the same p1_* actions the keyboard uses, so nothing in the match or
@@ -7,7 +7,10 @@
 ## jump, attack, item, dash, special and assist buttons.
 
 const PREFIX := "p1_"
-const JOY_CENTER := Vector2(78.0, 284.0)
+## The bottom band is reserved for controls; the game is drawn above it, the
+## same split the reference project uses on phones.
+const BAND_HEIGHT := 136.0
+const JOY_CENTER := Vector2(76.0, 292.0)
 const JOY_RADIUS := 46.0
 ## Wider than the visual base so a thumb can grab slightly outside it.
 const JOY_GRAB := 72.0
@@ -16,12 +19,12 @@ const DEAD_EXIT := 0.18
 const STICK_ACTIONS := ["left", "right", "crouch"]
 
 const BUTTONS := [
-	{"action": "jump", "label": "JUMP", "at": Vector2(566.0, 294.0), "r": 30.0},
-	{"action": "light", "label": "HIT", "at": Vector2(480.0, 300.0), "r": 26.0},
-	{"action": "ranged", "label": "ITEM", "at": Vector2(598.0, 230.0), "r": 23.0},
-	{"action": "flash", "label": "DASH", "at": Vector2(520.0, 220.0), "r": 23.0},
-	{"action": "special", "label": "SKILL", "at": Vector2(444.0, 240.0), "r": 23.0},
-	{"action": "assist", "label": "TAG", "at": Vector2(384.0, 294.0), "r": 20.0},
+	{"action": "jump", "label": "JUMP", "at": Vector2(524.0, 308.0), "r": 28.0},
+	{"action": "light", "label": "HIT", "at": Vector2(452.0, 312.0), "r": 24.0},
+	{"action": "flash", "label": "DASH", "at": Vector2(430.0, 246.0), "r": 20.0},
+	{"action": "special", "label": "SKILL", "at": Vector2(490.0, 242.0), "r": 20.0},
+	{"action": "ranged", "label": "ITEM", "at": Vector2(550.0, 244.0), "r": 20.0},
+	{"action": "assist", "label": "TAG", "at": Vector2(600.0, 306.0), "r": 18.0},
 ]
 
 const FILL := Color(0.09, 0.07, 0.14, 0.42)
@@ -159,6 +162,10 @@ func _button_at(at: Vector2) -> Dictionary:
 
 
 func _paint() -> void:
+	# Opaque band, so the playfield above it reads as its own screen area.
+	var band_top := 360.0 - BAND_HEIGHT
+	_view.draw_rect(Rect2(0.0, band_top, 640.0, BAND_HEIGHT), Color(0.04, 0.03, 0.07, 0.96))
+	_view.draw_line(Vector2(0.0, band_top), Vector2(640.0, band_top), Color(0.35, 0.30, 0.46, 0.9), 1.0)
 	# Stick base plus a nub that saturates at the rim.
 	_view.draw_circle(JOY_CENTER, JOY_RADIUS, FILL)
 	_view.draw_arc(JOY_CENTER, JOY_RADIUS, 0.0, TAU, 40, STROKE, 2.0)
@@ -178,3 +185,4 @@ func _paint() -> void:
 		_view.draw_string(font, at + Vector2(-radius, size * 0.36), String(button["label"]),
 			HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, size,
 			Color(0.98, 0.95, 1.0, 0.92))
+
