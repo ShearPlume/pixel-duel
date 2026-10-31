@@ -76,6 +76,7 @@ done
 coscmd -c "$COSCONF" upload -f build/deploy/index.html "$BUCKET_PATH/index.html" >/dev/null
 echo "    uploaded; entry page now points at $REV"
 echo "REVISION=$REV"
-echo "PUBLIC_URL=$PUBLIC_BASE"
+echo "PUBLIC_URL=${PUBLIC_BASE}index.html"
+
 
 

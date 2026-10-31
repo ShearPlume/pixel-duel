@@ -144,14 +144,17 @@ jobs:
         run: |
           set -e
           for i in $(seq 1 12); do
-            if curl -fsS "${PUBLIC_BASE}?t=$RANDOM" | grep -q "$REV"; then
-              echo "live at $REV -> $PUBLIC_BASE"
+            # COS only resolves the index document for the bucket root prefix, so a
+            # sub-folder entry page has to be addressed by its file name.
+            if curl -fsS "${PUBLIC_BASE}index.html?t=$RANDOM" | grep -q "$REV"; then
+              echo "live at $REV -> ${PUBLIC_BASE}index.html"
               exit 0
             fi
             sleep 5
           done
-          echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
+          echo "::error::live page does not reference $REV yet (${PUBLIC_BASE}index.html)"
           exit 1
+
 
 
 
