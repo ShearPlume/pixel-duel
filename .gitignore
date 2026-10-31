@@ -49,3 +49,7 @@ art-src/*/atlas.json
 # Local screenshot / probe scratch
 shots/
 
+# Python cache
+__pycache__/
+*.pyc
+
