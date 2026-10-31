@@ -69,6 +69,13 @@ if [ -z "$NODE_BIN" ]; then
 fi
 echo "node: $NODE_BIN"
 NODE_DIR="$(dirname "$NODE_BIN")"
+# systemd starts the unit as $RUN_USER; an nvm install under /root is unreadable
+# there, which shows up as status=203/EXEC. Fall back to running as root.
+UNIT_USER="$RUN_USER"
+if [ "$RUN_USER" != "root" ] && ! su -s /bin/sh "$RUN_USER" -c "test -x '$NODE_BIN'" 2>/dev/null; then
+  echo "note: $RUN_USER cannot execute $NODE_BIN, the relay will run as root"
+  UNIT_USER="root"
+fi
 cat > "/etc/systemd/system/$NAME.service" <<UNIT
 [Unit]
 Description=pixel-duel LAN room relay
@@ -76,7 +83,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=$RUN_USER
+User=$UNIT_USER
 WorkingDirectory=$REPO/server
 Environment=PORT=$PORT
 Environment=MAX_PLAYERS=5
@@ -205,6 +212,8 @@ fi
 section "verify"
 curl -s -o /dev/null -w "local relay health: %{http_code}\n" "http://127.0.0.1:$PORT/health"
 curl -s -o /dev/null -w "public /$PATH_NAME: %{http_code}\n" -H "Connection: Upgrade" -H "Upgrade: websocket" "https://mirugumi.space/$PATH_NAME"
+
+
 
 
 
