@@ -37,11 +37,16 @@ docker exec "$CONTAINER" nginx -v 2>&1 || echo "nginx not inside $CONTAINER"
 echo "-- mounts"
 docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{.Type}}){{"\n"}}{{end}}' "$CONTAINER"
 
-CONF_MOUNT="$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}}{{"\n"}}{{end}}' "$CONTAINER" | grep -E ':(/etc/nginx|/etc/nginx/conf.d)$' | head -1 | cut -d: -f1)"
-if [ -n "$CONF_MOUNT" ] && [ -d "$CONF_MOUNT" ]; then
-  echo "host config dir: $CONF_MOUNT"
-  grep -rl "$PATH_NAME\|duel-signal" "$CONF_MOUNT" 2>/dev/null | head -5
-  grep -rl "server_name" "$CONF_MOUNT" 2>/dev/null | head -5
+MOUNT_LINE="$(docker inspect -f '{{range .Mounts}}{{.Source}}:{{.Destination}}{{"\n"}}{{end}}' "$CONTAINER" | grep '/etc/nginx' | head -1)"
+CONF_MOUNT="${MOUNT_LINE%%:*}"
+CONF_TARGET="${MOUNT_LINE#*:}"
+if [ -n "$CONF_MOUNT" ] && [ -e "$CONF_MOUNT" ]; then
+  echo "host config path: $CONF_MOUNT -> container $CONF_TARGET"
+  if [ -d "$CONF_MOUNT" ]; then
+    grep -rln "server_name" "$CONF_MOUNT" 2>/dev/null | head -5
+  else
+    echo "single file mount"
+  fi
 else
   echo "nginx config is not bind mounted; edits inside the container are lost on recreate"
 fi
@@ -51,6 +56,19 @@ if [ "$(id -u)" != "0" ]; then
   echo "run as root to install the unit"
   exit 0
 fi
+NODE_BIN="$(sudo -u "$RUN_USER" bash -lc 'command -v node' 2>/dev/null || true)"
+[ -z "$NODE_BIN" ] && NODE_BIN="$(command -v node || true)"
+if [ -z "$NODE_BIN" ]; then
+  for candidate in /usr/local/bin/node /usr/bin/node "$(sudo -u "$RUN_USER" bash -lc 'ls -1 $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | tail -1' 2>/dev/null)"; do
+    [ -n "$candidate" ] && [ -x "$candidate" ] && NODE_BIN="$candidate" && break
+  done
+fi
+if [ -z "$NODE_BIN" ]; then
+  echo "cannot find the node binary; install node or pass NODE_BIN=/path/to/node"
+  exit 1
+fi
+echo "node: $NODE_BIN"
+NODE_DIR="$(dirname "$NODE_BIN")"
 cat > "/etc/systemd/system/$NAME.service" <<UNIT
 [Unit]
 Description=pixel-duel LAN room relay
@@ -62,7 +80,8 @@ User=$RUN_USER
 WorkingDirectory=$REPO/server
 Environment=PORT=$PORT
 Environment=MAX_PLAYERS=5
-ExecStart=/usr/bin/env node $REPO/server/room_server.js
+Environment=PATH=$NODE_DIR:/usr/local/bin:/usr/bin:/bin
+ExecStart=$NODE_BIN $REPO/server/room_server.js
 Restart=always
 RestartSec=3
 
@@ -94,7 +113,10 @@ import pathlib, re, shutil, subprocess, sys, time
 root = pathlib.Path(sys.argv[1])
 name = sys.argv[2]
 port = sys.argv[3]
-files = [p for p in root.rglob("*") if p.is_file() and re.search(r"\.conf$", p.name)]
+if root.is_file():
+    files = [root]
+else:
+    files = [p for p in root.rglob("*") if p.is_file() and p.name.endswith(".conf")]
 server_file = None
 for path in files:
     text = path.read_text(errors="replace")
@@ -158,3 +180,5 @@ fi
 section "verify"
 curl -s -o /dev/null -w "local relay health: %{http_code}\n" "http://127.0.0.1:$PORT/health"
 curl -s -o /dev/null -w "public /$PATH_NAME: %{http_code}\n" -H "Connection: Upgrade" -H "Upgrade: websocket" "https://mirugumi.space/$PATH_NAME"
+
+
