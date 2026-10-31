@@ -1,0 +1,30 @@
+{
+  "name": "Yggdrasil Theater",
+  "map_dir": "C:\\Users\\y00866000.CHINA\\PycharmProjects\\pixel-duel\\art-src\\map\\yggdrasil",
+  "photo": "C:\\Users\\y00866000.CHINA\\PycharmProjects\\pixel-duel\\art-src\\map\\yggdrasil\\..\\origin-map-photo\\yggdrasil.png",
+  "chroma": {
+    "name": "green",
+    "hex": "#00FF00"
+  },
+  "background_size": [
+    2048,
+    1152
+  ],
+  "jobs": [
+    {
+      "id": "background",
+      "prompt_file": "prompts/background.txt",
+      "output_path": "generated/background.png",
+      "input_images": [
+        "..\\..\\origin-map-photo\\yggdrasil.png",
+        "layout-guide.png"
+      ]
+    },
+    {
+      "id": "platforms",
+      "prompt_file": "prompts/platforms.txt",
+      "output_path": "generated/platforms.png",
+      "input_images": []
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-﻿extends SceneTree
+extends SceneTree
 ## Placeholder hit windows + hurt reaction.
 ##   godot --headless --path . --script tests/hurt_test.gd
 

@@ -32,3 +32,20 @@ art/placeholder/*/frames/
 art/placeholder/*/previews/
 art/placeholder/*/spritesheet.webp
 art/placeholder/*/spritesheet.webp.import
+
+# Local secrets
+.env
+!.env.example
+# Generated art pipeline output
+art-src/_probe/
+art-src/*/frames/
+art-src/*/previews/
+art-src/*/spritesheet.webp
+art-src/*/spritesheet.webp.import
+art-src/*/spritesheet.png
+art-src/*/spritesheet.png.import
+art-src/*/atlas.json
+
+# Local screenshot / probe scratch
+shots/
+

@@ -4,11 +4,20 @@
 
 static var CACHE := {}
 
+## The desktop tree keeps the lossless PNG; the web export ships only the WebP
+## twin. Trying PNG first means both builds pick the right file with no flags.
+static func sheet_path(dir: String) -> String:
+	var png := dir.path_join("spritesheet.png")
+	if ResourceLoader.exists(png):
+		return png
+	return dir.path_join("spritesheet.webp")
+
+
 static func load_atlas(dir: String) -> Dictionary:
 	if CACHE.has(dir):
 		return CACHE[dir]
 	var meta_path := dir.path_join("atlas.json")
-	var sheet_path := dir.path_join("spritesheet.png")
+	var sheet_path := sheet_path(dir)
 	if not FileAccess.file_exists(meta_path) or not ResourceLoader.exists(sheet_path):
 		return {}
 	var meta: Variant = JSON.parse_string(FileAccess.get_file_as_string(meta_path))
@@ -31,7 +40,9 @@ static func load_atlas(dir: String) -> Dictionary:
 	var result := {
 		"frames": frames,
 		"cell": cell,
+		"height": float(meta.get("height", 0)),
 		"anchor": Vector2(float(meta.anchor[0]), float(meta.anchor[1])),
 	}
 	CACHE[dir] = result
 	return result
+

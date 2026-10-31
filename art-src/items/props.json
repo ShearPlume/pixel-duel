@@ -1,0 +1,31 @@
+{
+  "chroma": "#00FF00",
+  "fill": 0.86,
+  "style": "chunky 16-bit pixel art, thick near-black outline, three flat shading steps, no anti-aliasing, bright saturated colours with a dark rim, like a handheld prop icon in a 90s arcade fighting game",
+  "props": [
+    {
+      "kind": "bat",
+      "label": "an electric guitar, violet-blue body with a pale pickguard, chrome bridge, strings, pointy headstock with tuning pegs, short strap",
+      "notes": "melee weapon: swung with both hands",
+      "mirror_art": false
+    },
+    {
+      "kind": "cannon",
+      "label": "a soap bubble cannon, chunky toy blunderbuss with a flared pink-plated barrel, mint metal bands, a crank on the side and a cluster of three pale soap bubbles floating at the muzzle",
+      "notes": "homing launcher: fires slow bubbles",
+      "mirror_art": true
+    },
+    {
+      "kind": "grenade",
+      "label": "a small two-tier pistachio-green cream cake with white icing drips, three red cherries on top and a paper doily underneath",
+      "notes": "throwable: explodes like a party cake",
+      "mirror_art": false
+    },
+    {
+      "kind": "pistol",
+      "label": "a bright yellow plastic toy ray gun with a rounded barrel, orange muzzle plug, purple grip and a little fin on top",
+      "notes": "projectile: harmless-looking toy blaster",
+      "mirror_art": true
+    }
+  ]
+}

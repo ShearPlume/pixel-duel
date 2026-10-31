@@ -1,0 +1,134 @@
+{
+  "name": "Yggdrasil Theater",
+  "photo": "../origin-map-photo/yggdrasil.png",
+  "background": {
+    "size": [
+      2048,
+      1152
+    ],
+    "parallax": 0.32,
+    "scene": "an underground idol live house called Yggdrasil Theater: old red brick wall covering the upper two thirds, a black steel ceiling beam carrying huge white blocky letters that read YGGDRASIL, big pink and red spray-paint graffiti tags on the brick, a yellow marquee light box with five glowing idol posters framed by round chase bulbs, a grey double service door with metal handles, a white three-step utility shelf beside it, a metal staircase on the left, a wooden bench, a mint green plastic stool, polished grey plank floor, pink and cyan stage spotlights cutting through haze, a thin string of festoon bulbs along the beam",
+    "keep": "the brick wall, the ceiling beam lettering, the yellow poster light box, the grey double door, the graffiti and the plank floor",
+    "floor_share": "the bottom quarter of the frame",
+    "mood": "late night, neon rim light, deep shadow in the corners, empty stage before a show",
+    "anchor": [
+      0,
+      -404
+    ]
+  },
+  "platform_art": {
+    "cell_height": 22,
+    "material": "a dark metal stage truss ledge with a scuffed wooden deck on top, a thin neon pink strip along the front lip and small teal rivets"
+  },
+  "platforms": [
+    {
+      "rect": [
+        -520,
+        0,
+        1040,
+        40
+      ],
+      "kind": "solid"
+    },
+    {
+      "rect": [
+        -470,
+        -170,
+        220,
+        16
+      ],
+      "kind": "conveyor",
+      "speed": 110
+    },
+    {
+      "rect": [
+        250,
+        -170,
+        220,
+        16
+      ],
+      "kind": "conveyor",
+      "speed": -110
+    },
+    {
+      "rect": [
+        -110,
+        -300,
+        220,
+        16
+      ],
+      "kind": "soft"
+    },
+    {
+      "rect": [
+        -70,
+        -440,
+        140,
+        16
+      ],
+      "kind": "soft"
+    },
+    {
+      "rect": [
+        -330,
+        -8,
+        120,
+        8
+      ],
+      "kind": "bouncer",
+      "power": 1010
+    },
+    {
+      "rect": [
+        210,
+        -8,
+        120,
+        8
+      ],
+      "kind": "bouncer",
+      "power": 1010
+    }
+  ],
+  "hazards": [
+    {
+      "rect": [
+        -520,
+        -40,
+        90,
+        40
+      ],
+      "dps": 16
+    },
+    {
+      "rect": [
+        430,
+        -40,
+        90,
+        40
+      ],
+      "dps": 16
+    }
+  ],
+  "spawns": [
+    [
+      -150,
+      -40
+    ],
+    [
+      150,
+      -40
+    ],
+    [
+      0,
+      -330
+    ],
+    [
+      -380,
+      -210
+    ],
+    [
+      380,
+      -210
+    ]
+  ]
+}

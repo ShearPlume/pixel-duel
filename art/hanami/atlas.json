@@ -1,0 +1,105 @@
+{
+  "cell": [
+    256,
+    208
+  ],
+  "columns": 8,
+  "anchor": [
+    128,
+    196
+  ],
+  "image": "spritesheet.png",
+  "height": 147,
+  "states": [
+    {
+      "name": "idle",
+      "row": 0,
+      "frames": 6,
+      "fps": 10
+    },
+    {
+      "name": "walk",
+      "row": 1,
+      "frames": 4,
+      "fps": 10
+    },
+    {
+      "name": "walk-back",
+      "row": 2,
+      "frames": 4,
+      "fps": 12
+    },
+    {
+      "name": "crouch",
+      "row": 3,
+      "frames": 3,
+      "fps": 12
+    },
+    {
+      "name": "jump",
+      "row": 4,
+      "frames": 2,
+      "fps": 10
+    },
+    {
+      "name": "attack-light",
+      "row": 5,
+      "frames": 4,
+      "fps": 24
+    },
+    {
+      "name": "attack-heavy",
+      "row": 6,
+      "frames": 4,
+      "fps": 24
+    },
+    {
+      "name": "kick",
+      "row": 7,
+      "frames": 4,
+      "fps": 24
+    },
+    {
+      "name": "hurt",
+      "row": 8,
+      "frames": 3,
+      "fps": 20
+    },
+    {
+      "name": "hurt-air",
+      "row": 9,
+      "frames": 3,
+      "fps": 18
+    },
+    {
+      "name": "attack-air",
+      "row": 10,
+      "frames": 4,
+      "fps": 24
+    },
+    {
+      "name": "jump-fall",
+      "row": 11,
+      "frames": 2,
+      "fps": 10
+    },
+    {
+      "name": "land",
+      "row": 12,
+      "frames": 2,
+      "fps": 16
+    },
+    {
+      "name": "item-hold",
+      "row": 13,
+      "frames": 2,
+      "fps": 8
+    },
+    {
+      "name": "item-swing",
+      "row": 14,
+      "frames": 4,
+      "fps": 24
+    }
+  ]
+}

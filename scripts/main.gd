@@ -6,12 +6,12 @@ const Fighter = preload("res://scripts/fighter.gd")
 const HitResolve = preload("res://scripts/hit_resolve.gd")
 
 const SFX := {
-	"hit_light": preload("res://audio/sfx/hit_light.wav"),
-	"hit_heavy": preload("res://audio/sfx/hit_heavy.wav"),
-	"hurt": preload("res://audio/sfx/hurt.wav"),
-	"whiff": preload("res://audio/sfx/whiff.wav"),
-	"jump": preload("res://audio/sfx/jump.wav"),
-	"land": preload("res://audio/sfx/land.wav"),
+	"hit_light": preload("res://art/audio/hit_light.wav"),
+	"hit_heavy": preload("res://art/audio/hit_heavy.wav"),
+	"hurt": preload("res://art/audio/hit_heavy.wav"),
+	"whiff": preload("res://art/audio/guitar_swing.wav"),
+	"jump": preload("res://art/audio/jump.wav"),
+	"land": preload("res://art/audio/land.wav"),
 }
 const SFX_GAIN := {"hurt": -7.0, "whiff": -6.0, "jump": -8.0, "land": -5.0}
 const SFX_VOICES := 8
@@ -247,3 +247,4 @@ func _play_sfx(cue: String) -> void:
 	player.stream = SFX[cue]
 	player.volume_db = float(SFX_GAIN.get(cue, 0.0))
 	player.play()
+

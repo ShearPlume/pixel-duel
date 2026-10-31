@@ -1,0 +1,29 @@
+{
+  "cell": [
+    72,
+    72
+  ],
+  "image": "spritesheet.png",
+  "items": {
+    "bat": {
+      "col": 0,
+      "w": 24,
+      "h": 62
+    },
+    "cannon": {
+      "col": 1,
+      "w": 36,
+      "h": 32
+    },
+    "grenade": {
+      "col": 2,
+      "w": 29,
+      "h": 28
+    },
+    "pistol": {
+      "col": 3,
+      "w": 30,
+      "h": 26
+    }
+  }
+}

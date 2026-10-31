@@ -81,15 +81,31 @@ def layout_guide(frame_count, path):
     img.save(path)
 
 
-def base_prompt(char, chroma_name, chroma_hex):
+def base_prompt(char, chroma_name, chroma_hex, has_reference=False):
+    if has_reference:
+        desc = " ".join(char.get("description", "").split())
+        return (
+            "Convert the person in the reference photo into a chibi pixel-art fighting game sprite. "
+            "Keep their recognisable features: hairstyle and hair colour, face shape, eye colour, "
+            "and the colours and key details of the outfit (bows, headdress, boots). "
+            f"Look: {desc}. "
+            "Ignore the photo background, props and watermark. "
+            f"Full body, strict side profile view (not three-quarter), facing {STATES['facing']}, "
+            "fighting guard stance, feet on one invisible baseline, "
+            "thick dark outline, limited palette, flat cel shading, crisp stepped pixel edges. "
+            f"Flat {chroma_name} {chroma_hex} background edge to edge, "
+            "no ground shadow, no floor line, no scene, no text."
+        )
     desc = " ".join(char["description"].split())
     if len(desc) > 180:
         desc = desc[:180].rsplit(" ", 1)[0]
     return (
         f"Chibi pixel-art fighting game sprite: {desc}. "
-        f"Full body, standing in a guard stance, facing {STATES['facing']}, feet on one ground line, "
+        f"Full body, strict side profile view (not three-quarter), facing {STATES['facing']}, "
+        f"fighting guard stance, feet on one invisible baseline, "
         f"thick dark outline, limited palette, flat cel shading, crisp stepped pixel edges. "
-        f"Flat {chroma_name} {chroma_hex} background, no shadow, no scene, no text."
+        f"Flat {chroma_name} {chroma_hex} background edge to edge, "
+        f"no ground shadow, no floor line, no scene, no text."
     )
 
 
@@ -97,11 +113,19 @@ def row_prompt(state, char, chroma_name, chroma_hex):
     frames = state["frames"]
     reqs = "; ".join(state.get("requirements", []))
     text = (
-        f"{frames}-frame animation strip of the same character: {state['action']}. "
-        f"Keep identical identity, palette, proportions and facing {STATES['facing']} in every frame. "
-        f"Follow the attached layout guide: one full-body pose per slot, evenly spaced, never overlapping, "
-        f"both feet on the red ground line. {reqs}. "
-        f"Flat {chroma_name} {chroma_hex} background, no shadows, no ground, no speed lines, no text."
+        f"Horizontal animation sprite strip with exactly {frames} frames of the same chibi fighter, "
+        f"side view, all facing {STATES['facing']}, arranged left to right with clear empty gaps between them. "
+        f"Action: {state['action']}. "
+        f"Keep identical identity, palette, proportions and outline in every frame. "
+        f"Every frame must be drawn at exactly the same scale: the character is the same pixel height "
+        f"and has the same head size in all {frames} frames. "
+        f"Pixel-art style: thick dark outline, limited palette, flat solid colour fills, stepped edges. "
+        f"Never use dithering, sparkles, colour noise, texture dots or gradients inside the character. "
+        f"The silhouette must be solid with no holes or transparent gaps in the clothes or hair. "
+        f"Every character stands on the same invisible baseline. {reqs}. "
+        f"Background must be one perfectly flat {chroma_name} {chroma_hex} field edge to edge, "
+        f"and that colour may not appear anywhere inside the character. "
+        f"Do not draw any ground line, floor, shadow, ellipse under the feet, speed lines or text."
     )
     return " ".join(text.split())
 
@@ -142,7 +166,7 @@ def main():
         "prompt_file": "prompts/base.txt",
         "output_path": "generated/base.png",
     }]
-    (prompts / "base.txt").write_text(base_prompt(char, chroma_name, chroma_hex), encoding="utf-8")
+    (prompts / "base.txt").write_text(base_prompt(char, chroma_name, chroma_hex, reference is not None), encoding="utf-8")
 
     guides_done = set()
     for state in STATES["states"]:

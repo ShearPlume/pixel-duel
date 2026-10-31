@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Placeholder stick-figure sprites, drawn procedurally so they animate properly.
 
     py -3 tools/art/gen_stickman.py [character-dir]

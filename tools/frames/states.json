@@ -1,5 +1,8 @@
 {
-  "cell": [192, 208],
+  "cell": [
+    256,
+    208
+  ],
   "columns": 8,
   "feet_margin": 12,
   "facing": "right",
@@ -20,13 +23,17 @@
     {
       "name": "walk",
       "row": 1,
-      "frames": 8,
-      "fps": 12,
-      "action": "walking forward to the right loop, clear alternating steps, guard kept up",
+      "frames": 4,
+      "fps": 10,
+      "action": "side view walk cycle loop of exactly four frames, in place like a treadmill: frame 1 right leg reaches forward with the heel about to touch the ground and the left leg trails behind, frame 2 both legs pass close together as the body rises, frame 3 left leg reaches forward with the heel about to touch the ground and the right leg trails behind, frame 4 both legs pass close together as the body rises",
       "requirements": [
-        "unmistakably faces and travels right",
-        "alternate the stride across the 8 frames, no repeated frame",
-        "no speed lines, dust, shadows or motion trails"
+        "the legs must be widely split in frames 1 and 3 and close together in frames 2 and 4, so the stride is obvious",
+        "the arms hang down and swing relaxed, opposite to the legs, elbows slightly bent, hands open, never fists up at the chest",
+        "the torso stays upright with a slight bob: highest in frames 2 and 4, lowest in frames 1 and 3",
+        "the body height, head size, hip height and ground line must be identical in all four frames",
+        "the character walks in place: it must not travel across the frame, no forward lean",
+        "the skirt and hair sway a little behind the motion",
+        "frame 4 must flow back into frame 1 as a seamless loop"
       ]
     },
     {
@@ -53,24 +60,26 @@
     {
       "name": "jump",
       "row": 4,
-      "frames": 5,
-      "fps": 12,
-      "action": "jump: crouch anticipation, takeoff, airborne peak with legs tucked, descent, landing",
+      "frames": 2,
+      "fps": 10,
+      "action": "airborne hover: the character floats off the ground, both legs hanging with knees only slightly bent, arms relaxed slightly out from the body",
       "requirements": [
-        "vertical motion only through pose and body height",
-        "no shadow, no dust, no landing marks"
+        "only two frames: just leaving the ground, then the airborne hover",
+        "keep the body the same height and proportions as the idle pose, do not tuck into a ball or stretch into a leap",
+        "feet stay under the body, never kicked out towards the viewer",
+        "no ground line, no shadow, no dust"
       ]
     },
     {
       "name": "attack-light",
       "row": 5,
       "frames": 4,
-      "fps": 30,
-      "action": "straight jab with the lead hand: wind-up, arm extended at full reach, slight follow-through, return to stance",
+      "fps": 24,
+      "action": "straight punch with the lead arm: guard, short wind-up, fully extended straight arm at shoulder height, retract",
       "requirements": [
-        "the punching arm must clearly reach furthest on frame 3 of 4",
-        "the body axis and both feet stay in the same place in every frame",
-        "no impact effects, no motion lines, no comic symbols"
+        "frame 3 of 4 must show the arm fully extended horizontally at shoulder height",
+        "the four frames must be visibly different",
+        "no impact effects, no motion lines"
       ]
     },
     {
@@ -106,6 +115,80 @@
       "requirements": [
         "same facing right, feet near the same ground line",
         "no blood, no impact sparks, no detached effects"
+      ]
+    },
+    {
+      "name": "hurt-air",
+      "row": 9,
+      "frames": 3,
+      "fps": 18,
+      "action": "hit in mid air: the body arches backwards away from the direction the character faces, head and shoulders thrown back, arms trailing behind, legs swinging forward",
+      "requirements": [
+        "the torso leans backwards, never forwards",
+        "the character is clearly airborne, feet off any ground line",
+        "keep the same character, palette and outline",
+        "no blood, no impact sparks, no detached effects"
+      ]
+    },
+    {
+      "name": "attack-air",
+      "row": 10,
+      "frames": 4,
+      "fps": 24,
+      "action": "airborne upright punch: the character hangs vertically in the air, tall silhouette like the idle pose, feet dangling below the hips, and throws one straight punch upward above the head",
+      "requirements": [
+        "tall vertical silhouette in every frame: head at the top, feet at the bottom, never lying down, never diving, never horizontal",
+        "the punching arm extends straight up above the head by frame 3 of 4",
+        "the legs hang relaxed below the body, feet never pointed at the camera",
+        "clearly airborne with no ground line",
+        "no impact effects, no motion lines"
+      ]
+    },
+    {
+      "name": "jump-fall",
+      "row": 11,
+      "frames": 2,
+      "fps": 10,
+      "action": "airborne falling: legs trailing down, arms out for balance, body upright",
+      "requirements": [
+        "clearly airborne, no ground contact",
+        "same character, palette and outline"
+      ]
+    },
+    {
+      "name": "land",
+      "row": 12,
+      "frames": 2,
+      "fps": 16,
+      "action": "landing recovery: knees bent absorbing the impact, arms lowered, then starting to rise",
+      "requirements": [
+        "feet planted on the same invisible baseline",
+        "no dust, no impact marks, no shadow"
+      ]
+    },
+    {
+      "name": "item-hold",
+      "row": 13,
+      "frames": 2,
+      "fps": 8,
+      "action": "standing guard while holding a small item in one hand at chest height, the other hand still in a loose fist, subtle breathing",
+      "requirements": [
+        "the hand grips a small generic item, keep the grip closed and the arm bent",
+        "the same body height, head size and ground line as the idle pose",
+        "first and last frame nearly identical so the loop does not pop"
+      ]
+    },
+    {
+      "name": "item-swing",
+      "row": 14,
+      "frames": 4,
+      "fps": 24,
+      "action": "swinging a held item forward: wind up behind the shoulder, arm sweeps through in front of the chest, follow through, recover to guard",
+      "requirements": [
+        "the hand keeps the closed grip on the item the whole time",
+        "the striking point is furthest forward on frame 3 of 4",
+        "same body height, head size and ground line as the idle pose",
+        "no impact effects, no motion lines"
       ]
     }
   ]

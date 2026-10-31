@@ -1,4 +1,4 @@
-﻿extends SceneTree
+extends SceneTree
 ## M0 regression: jump arc, single jump per press, crouch height.
 ##   godot --headless --path . --script tests/jump_test.gd
 

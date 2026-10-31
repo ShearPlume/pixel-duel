@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 TOOLS_DIR = Path(__file__).resolve().parent
 STATES = json.loads((TOOLS_DIR / "states.json").read_text())
@@ -33,9 +33,10 @@ def remove_chroma(img, chroma_hex="#FF00FF", threshold=140.0):
     pixels[distance <= threshold] = [0, 0, 0, 0]
     red, green, blue, alpha = (pixels[:, :, i] for i in range(4))
     if key[0] > 200 and key[2] > 200 and key[1] < 50:
-        pixels[(red > 100) & (green < 80) & (blue > 100) & (alpha > 0)] = [0, 0, 0, 0]
-    gray = np.sqrt((red - 245) ** 2 + (green - 245) ** 2 + (blue - 245) ** 2)
-    pixels[(gray < 30) & (alpha > 0)] = [0, 0, 0, 0]
+        pixels[(red > 170) & (green < 70) & (blue > 170) & (alpha > 0)] = [0, 0, 0, 0]
+    if key[0] > 200 and key[1] > 200 and key[2] > 200:
+        gray = np.sqrt((red - 245) ** 2 + (green - 245) ** 2 + (blue - 245) ** 2)
+        pixels[(gray < 30) & (alpha > 0)] = [0, 0, 0, 0]
     return Image.fromarray(pixels.astype(np.uint8))
 
 
@@ -104,8 +105,11 @@ def body_axis_x(frame):
     return float((band.sum(axis=0) * np.arange(frame.width)).sum() / total)
 
 
-def extract_strip(strip_path, frame_count, chroma_hex):
+def cut_strip(strip_path, frame_count, chroma_hex):
+    """Returns the raw per-frame crops, before any scaling."""
     strip = remove_chroma(Image.open(strip_path).convert("RGBA"), chroma_hex)
+    strip = despeckle(strip)
+    strip = decontaminate_edges(strip)
     width, _ = strip.size
     alpha = np.array(strip)[:, :, 3]
     boundaries = [0] + find_cuts(alpha, frame_count) + [width]
@@ -117,22 +121,239 @@ def extract_strip(strip_path, frame_count, chroma_hex):
     frames = []
     for index in range(frame_count):
         frame = strip.crop((boundaries[index], shared_top, boundaries[index + 1], shared_bottom))
-        frames.append(largest_component_only(frame))
-    frames = [f for f in frames if f.width > 0 and f.height > 0]
-    if not frames:
-        return []
+        frame = largest_component_only(frame)
+        # Trim the neighbouring character that leaked into this slice. The
+        # shared top/bottom is kept so airborne frames keep their height offset.
+        alpha_frame = np.array(frame)[:, :, 3]
+        columns = np.where(alpha_frame.max(axis=0) > 16)[0]
+        if len(columns) > 0:
+            frame = frame.crop((int(columns.min()), 0, int(columns.max()) + 1, frame.height))
+        frames.append(frame)
+    return [f for f in frames if f.width > 0 and f.height > 0]
 
-    max_w = max(f.width for f in frames)
-    max_h = max(f.height for f in frames)
-    scale = min((CELL_W - 8) / max_w, (CELL_H - FEET_MARGIN - 6) / max_h, 1.0)
 
+def head_width(frame):
+    alpha = np.array(frame)[:, :, 3]
+    rows = np.where(alpha.max(axis=1) > 16)[0]
+    if len(rows) == 0:
+        return 1
+    top, bottom = int(rows.min()), int(rows.max())
+    band = alpha[top:top + max(1, int((bottom - top) * 0.18)), :]
+    columns = np.where(band.max(axis=0) > 16)[0]
+    return max(1, int(columns.max() - columns.min() + 1))
+
+
+def head_scales(all_frames):
+    """The model draws every strip at a slightly different size. Normalising by
+    head width keeps the body the same size across states, while a crouch still
+    looks shorter than an idle."""
+
+    heads, fits = {}, {}
+    for name, frames in all_frames.items():
+        heads[name] = float(np.median([head_width(f) for f in frames]))
+        tallest = max(f.height for f in frames)
+        widest = max(f.width for f in frames)
+        fits[name] = min((CELL_H - FEET_MARGIN - 4) / tallest, (CELL_W - 8) / widest, 1.0)
+    # One head size for every state: take the tightest state as the reference so
+    # nothing clips, then the game rescales the whole character uniformly.
+    target_head = min(heads[name] * fits[name] for name in all_frames)
+    scales = {}
+    for name in all_frames:
+        scales[name] = min(target_head / max(1.0, heads[name]), fits[name])
+
+    # A tumble pose lies sideways, so its head reads small and the body would
+    # shrink. Size those states so their long side matches the standing height,
+    # then keep them from growing past a sane band around the head-based scale.
+    idle_scale = scales.get("idle", 0.2)
+    idle_height = max(f.height for f in all_frames["idle"]) if "idle" in all_frames else 0
+    for name in ("hurt-air", "attack-air"):
+        if name not in scales or not idle_height:
+            continue
+        longest = max(max(f.width for f in all_frames[name]), max(f.height for f in all_frames[name]))
+        wanted = idle_scale * idle_height / max(1.0, longest)
+        scales[name] = min(max(scales[name], wanted), scales[name] * 1.45, fits[name])
+    return scales
+
+
+
+def decontaminate_edges(frame, radius=4):
+    """Anti-aliased edges blend the key colour into the character, which shows
+    up as a purple halo around legs and skirts. Pixels that are magenta family
+    and touch the background are dropped so the downscale cannot smear them."""
+    arr = np.array(frame)
+    alpha = arr[:, :, 3]
+    rgb = arr[:, :, :3].astype(np.int32)
+    background = alpha == 0
+    for _ in range(radius):
+        padded = np.pad(background, 1)
+        background = (
+            padded[:-2, 1:-1] | padded[2:, 1:-1] | padded[1:-1, :-2]
+            | padded[1:-1, 2:] | padded[1:-1, 1:-1]
+        )
+    red, green, blue = rgb[:, :, 0], rgb[:, :, 1], rgb[:, :, 2]
+    halo = (red - green > 40) & (blue - green > 20) & (red > 70) & (blue > 90)
+    # Fully enclosed chroma (the gap between two legs) is never a real colour on
+    # the character either, but the loose rule would also eat pink frills.
+    enclosed = (red - green > 60) & (blue - green > 60) & (blue > 90)
+    kill = ((background & halo) | enclosed) & (alpha > 0)
+    arr[kill] = [0, 0, 0, 0]
+    return Image.fromarray(arr, "RGBA")
+
+
+def downscale(frame, scale, axis):
+    """Area-average instead of nearest: keeps the hand-drawn shading instead of
+    sampling lone dithered pixels."""
+    width = max(1, round(frame.width * scale))
+    height = max(1, round(frame.height * scale))
+    arr = np.array(frame).astype(np.float32)
+    premultiplied = arr.copy()
+    premultiplied[:, :, :3] *= arr[:, :, 3:4] / 255.0
+    small = Image.fromarray(np.clip(premultiplied, 0, 255).astype(np.uint8), "RGBA").resize(
+        (width, height), Image.BOX)
+    reduced = np.array(small).astype(np.float32)
+    alpha = np.maximum(reduced[:, :, 3:4] / 255.0, 1e-3)
+    reduced[:, :, :3] = np.clip(reduced[:, :, :3] / alpha, 0, 255)
+    return Image.fromarray(np.clip(reduced, 0, 255).astype(np.uint8), "RGBA"), axis * scale
+
+
+def fill_holes(frame):
+    """Chroma keying punches transparent slots into light clothing. Anything
+    fully enclosed by the silhouette is a hole, not background: flood the
+    outside first, then grow the neighbouring colour into the rest."""
+    arr = np.array(frame)
+    alpha = arr[:, :, 3]
+    height, width = alpha.shape
+    outside = np.zeros((height, width), dtype=bool)
+    stack = []
+    for y in range(height):
+        for x in (0, width - 1):
+            if alpha[y, x] <= 16 and not outside[y, x]:
+                outside[y, x] = True
+                stack.append((y, x))
+    for x in range(width):
+        for y in (0, height - 1):
+            if alpha[y, x] <= 16 and not outside[y, x]:
+                outside[y, x] = True
+                stack.append((y, x))
+    while stack:
+        cy, cx = stack.pop()
+        for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+            if 0 <= ny < height and 0 <= nx < width and alpha[ny, nx] <= 16 and not outside[ny, nx]:
+                outside[ny, nx] = True
+                stack.append((ny, nx))
+
+    pending = (alpha <= 16) & (~outside)
+    if not pending.any():
+        return frame
+    result = arr.copy()
+    frontier = []
+    for y, x in zip(*np.where(pending)):
+        neighbours = [arr[ny, nx, :3] for ny, nx in _neighbours(y, x, height, width)
+                      if alpha[ny, nx] > 16]
+        if neighbours:
+            result[y, x, :3] = np.mean(neighbours, axis=0)
+            result[y, x, 3] = 255
+            pending[y, x] = False
+            frontier.append((y, x))
+    while frontier:
+        grown = []
+        for y, x in frontier:
+            for ny, nx in _neighbours(y, x, height, width):
+                if pending[ny, nx]:
+                    result[ny, nx] = result[y, x]
+                    pending[ny, nx] = False
+                    grown.append((ny, nx))
+        frontier = grown
+    return Image.fromarray(result, "RGBA")
+
+
+def _neighbours(y, x, height, width):
+    return [(ny, nx) for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1))
+            if 0 <= ny < height and 0 <= nx < width]
+
+
+## States whose silhouette height is allowed to differ frame to frame (the body
+## really is tumbling or curled up). Everything else gets equalised.
+TUMBLING = {"hurt-air", "attack-air"}
+
+
+def despeckle(frame, max_size=40):
+    """The generator sprinkles two-pixel pink sparkles over the clothes. They
+    are the same magenta family as the key, only lighter, so the distance test
+    keeps them. Drop the small connected blobs; big magenta areas (trim, bows)
+    stay because they are far larger than the sparkles."""
+    arr = np.array(frame)
+    rgb = arr[:, :, :3].astype(np.int32)
+    alpha = arr[:, :, 3]
+    red, green, blue = rgb[:, :, 0], rgb[:, :, 1], rgb[:, :, 2]
+    key = np.array([255, 0, 255])
+    distance = np.sqrt(((rgb - key) ** 2).sum(axis=2))
+    suspect = (alpha > 0) & ((distance < 60.0) | ((red - green > 50) & (blue - green > 30)))
+    if not suspect.any():
+        return frame
+    height, width = suspect.shape
+    seen = np.zeros((height, width), dtype=bool)
+    for y, x in zip(*np.where(suspect)):
+        if seen[y, x]:
+            continue
+        stack = [(y, x)]
+        seen[y, x] = True
+        blob = []
+        while stack:
+            cy, cx = stack.pop()
+            blob.append((cy, cx))
+            if len(blob) > max_size:
+                break
+            for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+                if 0 <= ny < height and 0 <= nx < width and suspect[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    stack.append((ny, nx))
+        if len(blob) <= max_size:
+            for cy, cx in blob:
+                arr[cy, cx] = [0, 0, 0, 0]
+    return Image.fromarray(arr, "RGBA")
+
+
+
+def equalise_frames(frames, name):
+    """The model draws every frame of a strip independently, so one walk frame
+    can come out a few percent shorter than its neighbours. Bring the frames of
+    an upright state back to the same standing height."""
+    if name in TUMBLING or len(frames) < 2:
+        return frames
+    heights = [content_height(f) for f in frames]
+    usable = [h for h in heights if h > 0]
+    if not usable:
+        return frames
+    target = float(np.median(usable))
+    out = []
+    for frame, height in zip(frames, heights):
+        if height <= 0:
+            out.append(frame)
+            continue
+        ratio = min(1.1, max(0.9, target / float(height)))
+        if abs(ratio - 1.0) < 0.005:
+            out.append(frame)
+            continue
+        size = (max(1, round(frame.width * ratio)), max(1, round(frame.height * ratio)))
+        out.append(frame.resize(size, Image.LANCZOS))
+    return out
+
+
+def content_height(frame):
+    alpha = np.array(frame)[:, :, 3]
+    rows = np.where(alpha.max(axis=1) > 16)[0]
+    return int(rows.max() - rows.min() + 1) if len(rows) else 0
+
+
+def place_frames(frames, scale, name=""):
+    frames = equalise_frames(frames, name)
     cells = []
     for frame in frames:
         axis = body_axis_x(frame)
         if scale < 1.0:
-            frame = frame.resize((max(1, round(frame.width * scale)),
-                                  max(1, round(frame.height * scale))), Image.NEAREST)
-            axis *= scale
+            frame, axis = downscale(frame, scale, axis)
+        frame = fill_holes(frame)
         canvas = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))
         # Feet on a shared ground line, body axis on the cell centre line:
         # this is what keeps a punch from dragging the whole character sideways.
@@ -141,6 +362,20 @@ def extract_strip(strip_path, frame_count, chroma_hex):
         canvas.paste(frame, (place_x, place_y), frame)
         cells.append(canvas)
     return cells
+
+
+def idle_cell_height(rows, states_out):
+    """Content height of the idle row, used to match characters in game."""
+    idle = next((s for s in states_out if s["name"] == "idle"), None)
+    if not idle or idle["row"] not in rows:
+        return 0
+    heights = []
+    for cell in rows[idle["row"]]:
+        alpha = np.array(cell)[:, :, 3]
+        rows_used = np.where(alpha.max(axis=1) > 16)[0]
+        if len(rows_used):
+            heights.append(int(rows_used.max() - rows_used.min() + 1))
+    return max(heights) if heights else 0
 
 
 def mirror_cells(cells):
@@ -185,6 +420,7 @@ def main():
     rows, states_out = {}, []
 
     print("=== frames ===")
+    raw = {}
     for job in manifest["jobs"]:
         if job["kind"] != "strip":
             continue
@@ -192,15 +428,22 @@ def main():
         if not strip_path.exists():
             print(f"  SKIP {job['state']}: {strip_path.name} missing")
             continue
-        cells = extract_strip(strip_path, job["frames"], chroma_hex)
-        if len(cells) != job["frames"]:
-            print(f"  WARN {job['state']}: expected {job['frames']} frames, cut {len(cells)}")
+        raw[job["row"]] = (cut_strip(strip_path, job["frames"], chroma_hex), job)
+
+    scales = head_scales({job["state"]: frames for frames, job in raw.values()})
+
+    for row in sorted(raw):
+        frames, job = raw[row]
+        scale = scales.get(job["state"], 0.2)
+        if len(frames) != job["frames"]:
+            print(f"  WARN {job['state']}: expected {job['frames']} frames, cut {len(frames)}")
+        cells = place_frames(frames, scale, job["state"])
         rows[job["row"]] = cells
         _dump(cells, char_dir, job["state"])
         preview_gif(cells, job["fps"], _preview(char_dir, job["state"]))
         states_out.append({"name": job["state"], "row": job["row"],
                            "frames": len(cells), "fps": job["fps"]})
-        print(f"  {job['state']}: {len(cells)} frames -> row {job['row']}")
+        print(f"  {job['state']}: {len(cells)} frames -> row {job['row']} (scale {scale:.3f})")
 
     for job in manifest["jobs"]:
         if job["kind"] != "mirror":
@@ -229,6 +472,8 @@ def main():
         "columns": COLUMNS,
         "anchor": [CELL_W // 2, CELL_H - FEET_MARGIN],
         "image": "spritesheet.png",
+        ## Standing height in cell pixels, so the game can match characters.
+        "height": idle_cell_height(rows, states_out),
         "states": sorted(states_out, key=lambda s: s["row"]),
     }
     (char_dir / "atlas.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
