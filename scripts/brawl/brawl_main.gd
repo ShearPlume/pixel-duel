@@ -15,6 +15,7 @@ const BurstEffect = preload("res://scripts/brawl/burst_effect.gd")
 const SlashEffect = preload("res://scripts/brawl/slash_effect.gd")
 const HeartPickup = preload("res://scripts/brawl/heart_pickup.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
+const NetClient = preload("res://scripts/net/net_client.gd")
 const TouchControls = preload("res://scripts/ui/touch_controls.gd")
 
 const VIEW_W := 640.0
@@ -27,6 +28,16 @@ const RESPAWN_DELAY := 1.1
 const CHARGE_START := 0.15
 const CHARGE_FULL := 1.15
 const HEART_INTERVAL := 7.0
+## LAN button bits, mirrored in scripts/net/net_client and the lobby.
+const NET_LEFT := 1
+const NET_RIGHT := 2
+const NET_JUMP := 4
+const NET_ATTACK := 8
+const NET_USE := 16
+const NET_RELEASE := 32
+const NET_CROUCH := 64
+## 60 Hz simulation, 20 Hz snapshots.
+const SNAPSHOT_EVERY := 3
 const HEART_MAX := 2
 const HEART_HEAL := 45.0
 const ZOOM_MIN := 0.42
@@ -73,6 +84,15 @@ var _hazards: Array = []
 var _conveyors: Array = []
 var _bouncers: Array = []
 var _clock := 0.0
+## LAN session: role, own slot, remote button bits, latest snapshot.
+var lan_role := ""
+var lan_slot := 0
+var _remote_bits := {}
+var _remote_prev := {}
+var _snapshot := {}
+var _lan_pickups: Array = []
+var _lan_pickup_state := ""
+var net: Node = null
 
 func _ready() -> void:
 	_sfx = Sfx.new()
@@ -86,7 +106,14 @@ func _ready() -> void:
 	_build_camera()
 	_build_hud()
 	selection = MatchConfig.characters
-	spawn_players(selection.size() if selection.size() >= 2 else 2)
+	var count := selection.size() if selection.size() >= 2 else 2
+	lan_role = MatchConfig.lan_role
+	lan_slot = MatchConfig.lan_slot
+	if MatchConfig.is_lan():
+		count = clampi(MatchConfig.lan_players, 2, Stage.MAX_PLAYERS)
+	spawn_players(count)
+	if MatchConfig.is_lan():
+		_setup_lan()
 
 func spawn_players(count: int) -> void:
 	player_count = clampi(count, 2, Stage.MAX_PLAYERS)
@@ -305,6 +332,11 @@ func _animate_stage(delta: float) -> void:
 
 func _step_fixed() -> void:
 	ticks += 1
+	# Guests do not simulate anything: they forward their input and replay the
+	# host's snapshots.
+	if lan_role == "guest":
+		_guest_tick()
+		return
 	if not match_over:
 		for index in range(brawlers.size()):
 			var brawler: Node2D = brawlers[index]
@@ -327,6 +359,154 @@ func _step_fixed() -> void:
 		for brawler: Node2D in brawlers:
 			if brawler.alive:
 				brawler.step(FIXED_DT, {}, Stage.PLATFORMS)
+	if lan_role == "host" and net != null and ticks % SNAPSHOT_EVERY == 0:
+		_send_snapshot()
+
+func _setup_lan() -> void:
+	net = MatchConfig.net
+	if net == null:
+		push_warning("LAN match without a socket, falling back to local play")
+		return
+	net.data_received.connect(_on_net_data)
+	net.peer_left.connect(_on_lan_peer_left)
+	net.closed.connect(_on_lan_closed)
+	_snapshot = {}
+
+func _on_net_data(from_slot: int, payload: Dictionary) -> void:
+	match String(payload.get("t", "")):
+		"in":
+			if lan_role == "host":
+				_remote_bits[from_slot] = int(payload.get("b", 0))
+		"s":
+			if lan_role == "guest":
+				_snapshot = payload
+		_:
+			pass
+
+func _on_lan_peer_left(_reason: String) -> void:
+	status.text = "A player left the room"
+
+func _on_lan_closed(reason: String) -> void:
+	status.text = "Disconnected: %s (F5 back to rooms)" % reason
+
+
+## Own input as a bit field. Touch controls and the keyboard both land on p1_,
+## so every device reads its local player the same way.
+func _local_bits() -> int:
+	var prefix := "p1_"
+	var bits := 0
+	if Input.is_action_pressed(prefix + "left"):
+		bits |= NET_LEFT
+	if Input.is_action_pressed(prefix + "right"):
+		bits |= NET_RIGHT
+	if Input.is_action_pressed(prefix + "jump"):
+		bits |= NET_JUMP
+	if Input.is_action_pressed(prefix + "light"):
+		bits |= NET_ATTACK
+	var use := Input.is_action_pressed(prefix + "ranged")
+	if use:
+		bits |= NET_USE
+	elif bool(_item_latch[lan_slot] if lan_slot < _item_latch.size() else false):
+		bits |= NET_RELEASE
+	if Input.is_action_pressed(prefix + "crouch"):
+		bits |= NET_CROUCH
+	return bits
+
+
+## Host side: turn a guest's bit field into a command, with edge detection so
+## "pressed this tick" stays a one-shot like the local latches.
+func _remote_command(index: int) -> Dictionary:
+	var bits := int(_remote_bits.get(index, 0))
+	var previous := int(_remote_prev.get(index, 0))
+	_remote_prev[index] = bits
+	return {
+		"move": int(bool(bits & NET_RIGHT)) - int(bool(bits & NET_LEFT)),
+		"jump": bool(bits & NET_JUMP) and not bool(previous & NET_JUMP),
+		"attack": bool(bits & NET_ATTACK) and not bool(previous & NET_ATTACK),
+		"use_item": bool(bits & NET_USE) and not bool(previous & NET_USE),
+		"item_release": bool(bits & NET_RELEASE),
+		"crouch": bool(bits & NET_CROUCH),
+		"crouch_press": bool(bits & NET_CROUCH) and not bool(previous & NET_CROUCH),
+	}
+
+
+func _send_snapshot() -> void:
+	var players: Array = []
+	for index in range(brawlers.size()):
+		var brawler: Node2D = brawlers[index]
+		players.append([
+			index,
+			snappedf(brawler.position.x, 0.1), snappedf(brawler.position.y, 0.1),
+			snappedf(brawler.vel.x, 1.0), snappedf(brawler.vel.y, 1.0),
+			int(brawler.facing), 1 if brawler.on_ground else 0,
+			snappedf(brawler.hp, 0.5), brawler.stocks, 1 if brawler.alive else 0,
+			String(brawler.attack), String(brawler.item),
+			1 if brawler.hitstun > 0.0 else 0, 1 if brawler.invuln > 0.0 else 0,
+		])
+	var pickups: Array = []
+	for pickup: Dictionary in items:
+		var at: Vector2 = pickup.position
+		pickups.append([String(pickup.kind), snappedf(at.x, 0.1), snappedf(at.y, 0.1)])
+	net.send_data({"t": "s", "p": players, "i": pickups, "o": match_over})
+
+
+func _guest_tick() -> void:
+	if net != null:
+		net.send_data({"t": "in", "b": _local_bits()})
+		if lan_slot < _item_latch.size():
+			_item_latch[lan_slot] = Input.is_action_pressed("p1_ranged")
+	_apply_snapshot()
+
+
+func _apply_snapshot() -> void:
+	if _snapshot.is_empty():
+		return
+	var blend := clampf(FIXED_DT * 14.0, 0.0, 1.0)
+	for entry: Array in _snapshot.get("p", []):
+		var index := int(entry[0])
+		if index < 0 or index >= brawlers.size():
+			continue
+		var brawler: Node2D = brawlers[index]
+		brawler.position = brawler.position.lerp(Vector2(float(entry[1]), float(entry[2])), blend)
+		brawler.vel = Vector2(float(entry[3]), float(entry[4]))
+		brawler.facing = int(entry[5])
+		brawler.on_ground = bool(entry[6])
+		brawler.hp = float(entry[7])
+		brawler.stocks = int(entry[8])
+		var alive := bool(entry[9])
+		brawler.alive = alive
+		brawler.visible = alive
+		brawler.attack = String(entry[10])
+		brawler.item = String(entry[11])
+		brawler.hitstun = 1.0 if bool(entry[12]) else 0.0
+		brawler.invuln = 1.0 if bool(entry[13]) else 0.0
+		brawler._update_visuals({})
+	match_over = bool(_snapshot.get("o", false))
+	_sync_lan_pickups(_snapshot.get("i", []))
+
+
+## Rebuild the guest's view of the field items only when it actually changes.
+func _sync_lan_pickups(entries: Array) -> void:
+	var key := ""
+	for entry: Array in entries:
+		key += "%s:%d:%d;" % [String(entry[0]), int(float(entry[1])), int(float(entry[2]))]
+	if key == _lan_pickup_state:
+		return
+	_lan_pickup_state = key
+	for node: Node in _lan_pickups:
+		node.queue_free()
+	_lan_pickups.clear()
+	for entry: Array in entries:
+		var kind := String(entry[0])
+		var icon: AtlasTexture = ItemArt.texture_for(kind)
+		if icon == null:
+			continue
+		var sprite := Sprite2D.new()
+		sprite.texture = icon
+		sprite.scale = Vector2(0.62, 0.62)
+		sprite.position = Vector2(float(entry[1]), float(entry[2]))
+		add_child(sprite)
+		_lan_pickups.append(sprite)
 
 ## Conveyor drag and hazard burn, both looked up from the stage layout.
 func _apply_gimmicks(brawler: Node2D) -> void:
@@ -350,9 +530,14 @@ func _bounce(brawler: Node2D) -> void:
 	brawler.ground_soft = false
 
 func _command(index: int) -> Dictionary:
-	if _touch and index > 0:
+	if lan_role == "host" and index != lan_slot:
+		return _remote_command(index)
+	if _touch and not MatchConfig.is_lan() and index > 0:
 		return _bot_command(index)
 	var prefix := "p%d_" % (index + 1)
+	# Every device drives its own slot with p1_*, whatever slot number it got.
+	if MatchConfig.is_lan() and index == lan_slot:
+		prefix = "p1_"
 	var jump_down := Input.is_action_pressed(prefix + "jump")
 	var attack_down := Input.is_action_pressed(prefix + "light")
 	var item_down := Input.is_action_pressed(prefix + "ranged")
@@ -917,14 +1102,23 @@ func _update_hud() -> void:
 		for brawler: Node2D in brawlers:
 			if brawler.stocks > 0:
 				winner = brawler
-		status.text = "WINNER: P%d   (F5 reselect)" % (winner.player_index + 1) if winner != null else "DRAW"
+		var where := "rooms" if MatchConfig.is_lan() else "select"
+		status.text = "WINNER: P%d   (F5 back to %s)" % [winner.player_index + 1, where] if winner != null else "DRAW"
+	elif MatchConfig.is_lan():
+		var role_text := "host" if MatchConfig.lan_role == "host" else "guest"
+		status.text = "LAN %s  slot %d  room %s  -  F5 leaves the match" % [
+			role_text, lan_slot + 1, MatchConfig.lan_code]
 	else:
 		status.text = "P1/P2 keyboard - P3-P5 gamepads - F5 reselect"
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if (event as InputEventKey).physical_keycode == KEY_F5:
-			get_tree().change_scene_to_file("res://scenes/select.tscn")
+			if MatchConfig.is_lan():
+				MatchConfig.clear_lan()
+				get_tree().change_scene_to_file("res://scenes/lan.tscn")
+			else:
+				get_tree().change_scene_to_file("res://scenes/select.tscn")
 
 
 

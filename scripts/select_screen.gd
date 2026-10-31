@@ -137,6 +137,26 @@ func _build() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(hint)
 
+	var lan_button := Button.new()
+	lan_button.text = "LAN ROOM"
+	lan_button.position = Vector2(12.0, 288.0)
+	lan_button.size = Vector2(104.0, 26.0)
+	lan_button.add_theme_font_size_override("font_size", 11)
+	lan_button.pressed.connect(_open_lan)
+	add_child(lan_button)
+
+
+func _open_lan() -> void:
+	MatchConfig.clear_lan()
+	get_tree().change_scene_to_file("res://scenes/lan.tscn")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if (event as InputEventKey).physical_keycode == KEY_L:
+			_open_lan()
+			get_viewport().set_input_as_handled()
+
 func _label(text: String, at: Vector2, size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text

@@ -1,0 +1,13 @@
+﻿{
+  "name": "pixel-duel-relay",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LAN room relay for the pixel-duel web build",
+  "main": "room_server.js",
+  "scripts": {
+    "start": "node room_server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
