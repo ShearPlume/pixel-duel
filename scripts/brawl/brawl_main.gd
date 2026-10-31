@@ -106,8 +106,11 @@ func _ready() -> void:
 	# since a phone has only one player's worth of controls.
 	if TouchControls.is_touch_device():
 		_touch = true
-		_play_height = VIEW_H - TOUCH_BAND
-		add_child(TouchControls.new())
+		# Inside the handheld shell the controls live in their own bottom panel,
+		# so the camera keeps the full viewport height.
+		if not (get_parent() is SubViewport):
+			_play_height = VIEW_H - TOUCH_BAND
+			add_child(TouchControls.new())
 	_build_stage()
 	_build_camera()
 	_build_hud()
@@ -305,7 +308,7 @@ func _build_hud() -> void:
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(hud)
 	status = Label.new()
-	status.position = Vector2(8.0, VIEW_H - TOUCH_BAND + 4.0 if _touch else 340.0)
+	status.position = Vector2(8.0, 340.0)
 	status.add_theme_font_size_override("font_size", 9)
 	status.add_theme_color_override("font_color", Color("8f7fa8"))
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1134,6 +1137,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_tree().change_scene_to_file("res://scenes/lan.tscn")
 			else:
 				get_tree().change_scene_to_file("res://scenes/select.tscn")
+
 
 
 

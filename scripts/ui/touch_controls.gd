@@ -9,8 +9,8 @@ extends CanvasLayer
 const PREFIX := "p1_"
 ## The bottom band is reserved for controls; the game is drawn above it, the
 ## same split the reference project uses on phones.
-const BAND_HEIGHT := 136.0
-const JOY_CENTER := Vector2(76.0, 292.0)
+const BAND_HEIGHT := 144.0
+const JOY_CENTER := Vector2(78.0, 288.0)
 const JOY_RADIUS := 46.0
 ## Wider than the visual base so a thumb can grab slightly outside it.
 const JOY_GRAB := 72.0
@@ -19,12 +19,12 @@ const DEAD_EXIT := 0.18
 const STICK_ACTIONS := ["left", "right", "crouch"]
 
 const BUTTONS := [
-	{"action": "jump", "label": "JUMP", "at": Vector2(524.0, 308.0), "r": 28.0},
-	{"action": "light", "label": "HIT", "at": Vector2(452.0, 312.0), "r": 24.0},
-	{"action": "flash", "label": "DASH", "at": Vector2(430.0, 246.0), "r": 20.0},
-	{"action": "special", "label": "SKILL", "at": Vector2(490.0, 242.0), "r": 20.0},
-	{"action": "ranged", "label": "ITEM", "at": Vector2(550.0, 244.0), "r": 20.0},
-	{"action": "assist", "label": "TAG", "at": Vector2(600.0, 306.0), "r": 18.0},
+	{"action": "jump", "label": "A", "at": Vector2(530.0, 316.0), "r": 30.0},
+	{"action": "light", "label": "B", "at": Vector2(452.0, 320.0), "r": 26.0},
+	{"action": "flash", "label": "DASH", "at": Vector2(432.0, 246.0), "r": 20.0},
+	{"action": "special", "label": "SKILL", "at": Vector2(492.0, 238.0), "r": 20.0},
+	{"action": "ranged", "label": "ITEM", "at": Vector2(552.0, 244.0), "r": 20.0},
+	{"action": "assist", "label": "TAG", "at": Vector2(604.0, 306.0), "r": 18.0},
 ]
 
 const FILL := Color(0.09, 0.07, 0.14, 0.42)
@@ -185,4 +185,5 @@ func _paint() -> void:
 		_view.draw_string(font, at + Vector2(-radius, size * 0.36), String(button["label"]),
 			HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, size,
 			Color(0.98, 0.95, 1.0, 0.92))
+
 

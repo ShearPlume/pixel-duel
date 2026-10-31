@@ -129,7 +129,7 @@ func _build() -> void:
 		_states.append(state)
 
 	var hint := _label(
-		"Touch: stick to move, 打 to lock in" if _touch else
+		"Touch: stick to move, 鎵?to lock in" if _touch else
 		"P1  A/D  move   J  ready        P2  <-/->  move   Enter  ready        P3-P5  press jump to join",
 		Vector2(0.0, 330.0), 10, Color("8f7fac")
 	)
@@ -257,7 +257,8 @@ func _start_match() -> void:
 	for slot: Dictionary in _slots:
 		if bool(slot["joined"]):
 			MatchConfig.characters.append(CHARACTERS[int(slot["index"])])
-	get_tree().change_scene_to_file("res://scenes/brawl.tscn")
+	get_tree().change_scene_to_file("res://scenes/play.tscn")
+
 
 
 

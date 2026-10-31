@@ -8,6 +8,7 @@ extends Control
 const NetClient = preload("res://scripts/net/net_client.gd")
 const MatchConfig = preload("res://scripts/match_config.gd")
 const Sfx = preload("res://scripts/audio/sfx.gd")
+const TouchKeyboard = preload("res://scripts/ui/touch_keyboard.gd")
 
 const CHARACTERS := ["res://art/yoru", "res://art/nayu", "res://art/hanami", "res://art/kana", "res://art/mosaki"]
 const MAX_SLOTS := 5
@@ -24,6 +25,8 @@ var _start_button: Button
 var _menu_buttons: Array = []
 var _in_room := false
 var _logged_in := false
+var _keyboard: Control
+var _editing: LineEdit
 var _pending_name := ""
 var _login_box: VBoxContainer
 var _name_edit: LineEdit
@@ -78,6 +81,7 @@ func _build() -> void:
 	add_child(_login_box)
 
 	_name_edit = LineEdit.new()
+	_wire_touch(_name_edit, "你的名字")
 	_name_edit.placeholder_text = "name (2-16 chars)"
 	_name_edit.add_theme_font_size_override("font_size", 12)
 	_login_box.add_child(_name_edit)
@@ -89,12 +93,14 @@ func _build() -> void:
 	_create_account_button = _add_button(login_row, "NEW ACCOUNT", _on_show_register)
 
 	_question_edit = LineEdit.new()
+	_wire_touch(_question_edit, "密保问题")
 	_question_edit.placeholder_text = "recovery question"
 	_question_edit.add_theme_font_size_override("font_size", 11)
 	_question_edit.visible = false
 	_login_box.add_child(_question_edit)
 
 	_answer_edit = LineEdit.new()
+	_wire_touch(_answer_edit, "答案")
 	_answer_edit.placeholder_text = "answer"
 	_answer_edit.add_theme_font_size_override("font_size", 11)
 	_answer_edit.visible = false
@@ -153,6 +159,38 @@ func _build() -> void:
 	_room_box.add_child(leave)
 
 
+
+
+func _wire_touch(edit: LineEdit, heading: String) -> void:
+	# Browser virtual keyboards are unreliable inside the canvas, so on touch
+	# devices the field opens the in-game keypad instead.
+	if not DisplayServer.is_touchscreen_available():
+		return
+	edit.editable = false
+	edit.gui_input.connect(func(event: InputEvent) -> void:
+		var pressed: bool = (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed) \
+			or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed)
+		if pressed:
+			_open_keyboard(edit, heading))
+
+
+func _open_keyboard(edit: LineEdit, heading: String) -> void:
+	if _keyboard == null:
+		_keyboard = TouchKeyboard.new()
+		add_child(_keyboard)
+		_keyboard.submitted.connect(_apply_edit)
+		_keyboard.cancelled.connect(func() -> void: _keyboard.visible = false)
+	_editing = edit
+	_keyboard.visible = true
+	_keyboard.setup(edit.text, heading)
+	_keyboard.move_to_front()
+
+
+func _apply_edit(text: String) -> void:
+	if _editing != null:
+		_editing.text = text
+	if _keyboard != null:
+		_keyboard.visible = false
 
 
 func _add_button(parent: Node, text: String, callback: Callable) -> Button:
@@ -358,7 +396,7 @@ func _begin(_from: int) -> void:
 	# The lobby knows how many players actually joined; fill from the room state.
 	MatchConfig.lan_players = clampi(_filled_slots(), MIN_PLAYERS, MAX_SLOTS)
 	_status.text = "starting..."
-	get_tree().change_scene_to_file("res://scenes/brawl.tscn")
+	get_tree().change_scene_to_file("res://scenes/play.tscn")
 
 
 func _filled_slots() -> int:
@@ -406,6 +444,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_leave()
 			else:
 				_on_back()
+
+
+
 
 
 
