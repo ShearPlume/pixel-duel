@@ -73,6 +73,22 @@ jobs:
           echo "StrictHostKeyChecking=accept-new" > ~/.ssh/config
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: Preflight (best effort)
+        continue-on-error: true
+        run: |
+          REMOTE='echo "== account =="; whoami; id -nG
+            echo "== root =="; ls -la '"$DEPLOY_ROOT"' 2>&1 | head -15
+            echo "== godot =="; ls '"$DEPLOY_ROOT"'/tools 2>&1 | head -5
+            echo "== templates =="; ls '"$DEPLOY_ROOT"'/xdg/data/godot/export_templates 2>&1
+            echo "== coscmd =="; which coscmd; ls -l ~/.cos-minigame.conf 2>&1
+            echo "== sudo =="; sudo -n true 2>&1 && echo SUDO_PASSWORDLESS || echo SUDO_NEEDS_PASSWORD
+            echo "== site =="; ls -la /home/admin/mirugumi.space 2>&1 | head -20
+            echo "== nginx =="; (nginx -T 2>/dev/null || sudo -n nginx -T 2>/dev/null) | grep -nE "configuration file|location |proxy_pass|root |alias " | head -60'
+          if [ "${USE_SSHPASS:-0}" = "1" ]; then
+            sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" || true
+          else
+            ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" || true
+          fi
       - name: Server pulls and releases
         id: release
         run: |
@@ -115,6 +131,7 @@ jobs:
           done
           echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
           exit 1
+
 
 
 
