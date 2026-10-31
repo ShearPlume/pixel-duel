@@ -9,6 +9,7 @@ on:
     paths:
       - "server/**"
       - "scripts/ops/provision_lan.sh"
+      - "scripts/ops/expose_relay.sh"
       - ".github/workflows/provision-lan.yml"
 
 permissions:
@@ -57,7 +58,13 @@ jobs:
             git fetch --prune origin
             git reset --hard origin/main
             git clean -fd
-            bash scripts/ops/provision_lan.sh --apply"
+            if sudo -n true 2>/dev/null; then
+              echo 'using passwordless sudo'
+              sudo bash scripts/ops/expose_relay.sh --apply
+            else
+              echo 'no passwordless sudo: running what the deploy user can do'
+              bash scripts/ops/expose_relay.sh
+            fi"
           set +e
           if [ "${USE_SSHPASS:-0}" = "1" ]; then
             OUT=$(sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE" 2>&1)
@@ -90,3 +97,4 @@ jobs:
           git add docs/lan-relay-report.md
           git commit -m "ci: LAN relay report" || exit 0
           git push
+
