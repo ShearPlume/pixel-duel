@@ -73,6 +73,27 @@ jobs:
           echo "StrictHostKeyChecking=accept-new" > ~/.ssh/config
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: SSH probe
+        run: |
+          set -e
+          set +e
+          if [ "${USE_SSHPASS:-0}" = "1" ]; then
+            sshpass -p "$DEPLOY_PASSWORD" ssh $SSH_OPTS -o ConnectTimeout=15 -o BatchMode=no \
+              "$DEPLOY_USER@$DEPLOY_HOST" "echo SSH_OK; whoami" >~/.ssh/probe.out 2>~/.ssh/probe.err
+          else
+            ssh $SSH_OPTS -o ConnectTimeout=15 -o BatchMode=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "echo SSH_OK; whoami" >~/.ssh/probe.out 2>~/.ssh/probe.err
+          fi
+          code=$?
+          cat ~/.ssh/probe.out
+          if [ $code -ne 0 ]; then
+            echo "::error::SSH login to $DEPLOY_USER@$DEPLOY_HOST failed (exit $code)"
+            sed -n '1,20p' ~/.ssh/probe.err
+            echo "hint: 'Permission denied (publickey)' means the public key is not in /home/$DEPLOY_USER/.ssh/authorized_keys;"
+            echo "      'Host key verification failed' means the host key changed; 'Connection refused/timed out' means the firewall."
+            exit 1
+          fi
+
       - name: Preflight (best effort)
         continue-on-error: true
         run: |
@@ -131,6 +152,7 @@ jobs:
           done
           echo "::error::live page does not reference $REV yet ($PUBLIC_BASE)"
           exit 1
+
 
 
 
