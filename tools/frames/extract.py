@@ -29,22 +29,11 @@ def remove_chroma(img, chroma_hex="#FF00FF", threshold=140.0):
     img = img.convert("RGBA")
     key = tuple(int(chroma_hex[i:i + 2], 16) for i in (1, 3, 5))
     pixels = np.array(img, dtype=np.float64)
-    # Also sample the corner background colour in case the generator shifted
-    # #FF00FF toward hot-pink (e.g. ~220, 18, 92).
-    h, w, _ = pixels.shape
-    border_samples = np.concatenate([
-        pixels[0:4, :, :3].reshape(-1, 3),
-        pixels[h - 4:h, :, :3].reshape(-1, 3),
-        pixels[:, 0:4, :3].reshape(-1, 3),
-        pixels[:, w - 4:w, :3].reshape(-1, 3),
-    ], axis=0)
-    bg_key = np.median(border_samples, axis=0)
-    distance_hex = np.sqrt(((pixels[:, :, :3] - np.array(key)) ** 2).sum(axis=2))
-    distance_bg = np.sqrt(((pixels[:, :, :3] - bg_key) ** 2).sum(axis=2))
-    pixels[(distance_hex <= threshold) | (distance_bg <= 75.0)] = [0, 0, 0, 0]
+    distance = np.sqrt(((pixels[:, :, :3] - np.array(key)) ** 2).sum(axis=2))
+    pixels[distance <= threshold] = [0, 0, 0, 0]
     red, green, blue, alpha = (pixels[:, :, i] for i in range(4))
     if key[0] > 200 and key[2] > 200 and key[1] < 50:
-        pixels[(red > 170) & (green < 70) & (blue > 70) & ((red - green) > 120) & (alpha > 0)] = [0, 0, 0, 0]
+        pixels[(red > 170) & (green < 70) & (blue > 170) & (alpha > 0)] = [0, 0, 0, 0]
     if key[0] > 200 and key[1] > 200 and key[2] > 200:
         gray = np.sqrt((red - 245) ** 2 + (green - 245) ** 2 + (blue - 245) ** 2)
         pixels[(gray < 30) & (alpha > 0)] = [0, 0, 0, 0]
@@ -52,89 +41,48 @@ def remove_chroma(img, chroma_hex="#FF00FF", threshold=140.0):
 
 
 def find_cuts(alpha, frame_count):
-    """Find boundaries between frames using empty-column runs first, and
-    splitting any touching frames at the valley right before the next torso."""
+    """Cut on the emptiest column near each expected boundary."""
     height, width = alpha.shape
-    col_counts = (alpha > 16).sum(axis=0).astype(float)
-    runs = []
-    in_run = False
-    start = 0
-    for x in range(width):
-        if col_counts[x] > 0 and not in_run:
-            in_run = True
-            start = x
-        elif col_counts[x] == 0 and in_run:
-            in_run = False
-            if x - start >= 20:
-                runs.append((start, x - 1))
-    if in_run and width - start >= 20:
-        runs.append((start, width - 1))
-
-    if not runs:
-        slot = width / frame_count
-        return [int(i * slot) for i in range(1, frame_count)]
-
-    while len(runs) < frame_count:
-        widths = [r[1] - r[0] + 1 for r in runs]
-        idx = int(np.argmax(widths))
-        s, e = runs[idx]
-        avg_w = width / float(frame_count)
-        n_merged = max(2, round((e - s + 1) / avg_w))
-        sub_runs = []
-        cur_s = s
-        for k in range(1, n_merged):
-            approx = s + int((e - s) * k / n_merged)
-            search_l = max(s + 40, approx - 45)
-            search_r = min(e - 40, approx + 55)
-            window = col_counts[search_l:search_r + 1]
-            min_val = window.min()
-            cands = np.where(window <= min_val + 4)[0]
-            split_x = search_l + int(cands[-1])
-            sub_runs.append((cur_s, split_x))
-            cur_s = split_x + 1
-        sub_runs.append((cur_s, e))
-        runs = runs[:idx] + sub_runs + runs[idx + 1:]
-
-    if len(runs) > frame_count:
-        runs = runs[:frame_count]
-
+    projection = (alpha > 16).sum(axis=0).astype(float)
+    kernel = np.ones(max(3, width // 100))
+    smoothed = np.convolve(projection, kernel / kernel.sum(), mode="same")
+    slot = width / frame_count
     cuts = []
-    for i in range(frame_count - 1):
-        cuts.append((runs[i][1] + runs[i + 1][0]) // 2)
+    for index in range(1, frame_count):
+        expected = int(index * slot)
+        radius = max(10, int(slot * 0.18))
+        left = max(0, expected - radius)
+        right = min(width - 1, expected + radius)
+        cuts.append(left + int(np.argmin(smoothed[left:right + 1])))
     return cuts
 
 
-def largest_component_only(frame, min_pixels=35):
-    """Keep all character body parts (head, torso, legs, boots) inside the slice,
-    only dropping tiny noise specks or thin edge slivers leaked from a neighbour."""
+def largest_component_only(frame):
     arr = np.array(frame)
     alpha = arr[:, :, 3]
     height, width = alpha.shape
     visited = np.zeros((height, width), dtype=bool)
-    keep = np.zeros((height, width), dtype=bool)
+    best = []
     for y in range(height):
         for x in range(width):
             if visited[y, x] or alpha[y, x] <= 16:
                 continue
-            stack, pixels, xs = [(y, x)], [], []
+            stack, pixels = [(y, x)], []
             visited[y, x] = True
             while stack:
                 cy, cx = stack.pop()
                 pixels.append((cy, cx))
-                xs.append(cx)
                 for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
                     if 0 <= ny < height and 0 <= nx < width and not visited[ny, nx] and alpha[ny, nx] > 16:
                         visited[ny, nx] = True
                         stack.append((ny, nx))
-            if len(pixels) < min_pixels:
-                continue
-            min_x, max_x = min(xs), max(xs)
-            if (min_x == 0 and max_x < 18) or (max_x == width - 1 and min_x > width - 19):
-                continue
-            for py, px in pixels:
-                keep[py, px] = True
-    if not keep.any():
+            if len(pixels) > len(best):
+                best = pixels
+    if not best:
         return frame
+    keep = np.zeros((height, width), dtype=bool)
+    for y, x in best:
+        keep[y, x] = True
     arr[~keep, 3] = 0
     return Image.fromarray(arr)
 
@@ -174,14 +122,12 @@ def cut_strip(strip_path, frame_count, chroma_hex):
     for index in range(frame_count):
         frame = strip.crop((boundaries[index], shared_top, boundaries[index + 1], shared_bottom))
         frame = largest_component_only(frame)
+        # Trim the neighbouring character that leaked into this slice. The
+        # shared top/bottom is kept so airborne frames keep their height offset.
         alpha_frame = np.array(frame)[:, :, 3]
         columns = np.where(alpha_frame.max(axis=0) > 16)[0]
-        rows = np.where(alpha_frame.max(axis=1) > 16)[0]
-        if len(columns) > 0 and len(rows) > 0:
-            frame = frame.crop((
-                int(columns.min()), int(rows.min()),
-                int(columns.max()) + 1, int(rows.max()) + 1
-            ))
+        if len(columns) > 0:
+            frame = frame.crop((int(columns.min()), 0, int(columns.max()) + 1, frame.height))
         frames.append(frame)
     return [f for f in frames if f.width > 0 and f.height > 0]
 

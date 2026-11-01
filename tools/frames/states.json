@@ -11,35 +11,36 @@
     {
       "name": "idle",
       "row": 0,
-      "frames": 8,
-      "fps": 14,
-      "action": "smooth 8-frame fighting stance idle loop: frame 1 neutral guard, frames 2-4 gentle chest rise and slight knee bounce with fists bobbing, frame 5 peak of breath, frames 6-8 smooth return to neutral guard",
+      "frames": 6,
+      "fps": 10,
+      "action": "calm fighting stance idle loop: subtle breathing, small weight shift, fists up, feet planted",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
         "keep the guard stance and facing right in every frame",
         "feet stay planted on the same ground line",
-        "frame 8 flows smoothly back into frame 1 for a seamless loop"
+        "first and last frame nearly identical so the loop does not pop"
       ]
     },
     {
       "name": "walk",
       "row": 1,
-      "frames": 8,
-      "fps": 16,
-      "action": "smooth 8-frame side-view walk cycle loop in place: frames 1-2 right leg steps forward and takes weight, frames 3-4 legs pass at mid-stride as body rises slightly, frames 5-6 left leg steps forward and takes weight, frames 7-8 legs pass at mid-stride returning to frame 1",
+      "frames": 4,
+      "fps": 10,
+      "action": "side view walk cycle loop of exactly four frames, in place like a treadmill: frame 1 right leg reaches forward with the heel about to touch the ground and the left leg trails behind, frame 2 both legs pass close together as the body rises, frame 3 left leg reaches forward with the heel about to touch the ground and the right leg trails behind, frame 4 both legs pass close together as the body rises",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "clear smooth progression of leg and arm swing across all 8 frames",
-        "the body height, head size, hip height and ground line must be identical in all 8 frames",
-        "the character walks in place facing right, skirt and twin-tail hair sway smoothly",
-        "frame 8 flows seamlessly back into frame 1"
+        "the legs must be widely split in frames 1 and 3 and close together in frames 2 and 4, so the stride is obvious",
+        "the arms hang down and swing relaxed, opposite to the legs, elbows slightly bent, hands open, never fists up at the chest",
+        "the torso stays upright with a slight bob: highest in frames 2 and 4, lowest in frames 1 and 3",
+        "the body height, head size, hip height and ground line must be identical in all four frames",
+        "the character walks in place: it must not travel across the frame, no forward lean",
+        "the skirt and hair sway a little behind the motion",
+        "frame 4 must flow back into frame 1 as a seamless loop"
       ]
     },
     {
       "name": "walk-back",
       "row": 2,
       "frames": 8,
-      "fps": 14,
+      "fps": 12,
       "mirror_of": "walk",
       "action": "",
       "requirements": []
@@ -47,63 +48,60 @@
     {
       "name": "crouch",
       "row": 3,
-      "frames": 8,
-      "fps": 16,
-      "action": "smooth 8-frame crouching guard animation: frames 1-2 bending knees into low crouch, frames 3-6 low crouched fighting guard with subtle breathing and twin-tails resting low, frames 7-8 holding low guard ready to spring",
+      "frames": 3,
+      "fps": 12,
+      "action": "crouching: knees bent, body lowered to roughly two thirds of standing height, guard in front",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
         "same facing right and same ground line",
-        "body clearly lower than the idle stance",
+        "body clearly and consistently lower than the idle stance",
         "no attack, no jump"
       ]
     },
     {
       "name": "jump",
       "row": 4,
-      "frames": 8,
-      "fps": 16,
-      "action": "smooth 8-frame jump and airborne arc: frame 1 knee bend launch, frames 2-3 rising upward with legs tucked slightly, frames 4-5 apex hover in mid-air, frames 6-7 descending with skirt and twin-tails floating upward, frame 8 preparing to land",
+      "frames": 2,
+      "fps": 10,
+      "action": "airborne hover: the character floats off the ground, both legs hanging with knees only slightly bent, arms relaxed slightly out from the body",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "keep the body the same proportions and head size as the idle pose",
+        "only two frames: just leaving the ground, then the airborne hover",
+        "keep the body the same height and proportions as the idle pose, do not tuck into a ball or stretch into a leap",
+        "feet stay under the body, never kicked out towards the viewer",
         "no ground line, no shadow, no dust"
       ]
     },
     {
       "name": "attack-light",
       "row": 5,
-      "frames": 8,
-      "fps": 28,
-      "action": "smooth 8-frame fast jab combo punch with lead arm: frame 1 guard, frame 2 shoulder pull-back wind-up, frame 3 arm snapping forward half-way, frames 4-5 full crisp horizontal punch extension at shoulder height, frames 6-7 crisp retraction, frame 8 back to fighting stance",
+      "frames": 4,
+      "fps": 24,
+      "action": "straight punch with the lead arm: guard, short wind-up, fully extended straight arm at shoulder height, retract",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "frames 4 and 5 show the fist fully extended forward at shoulder height",
-        "feet stay planted on the same ground line in every frame",
+        "frame 3 of 4 must show the arm fully extended horizontally at shoulder height",
+        "the four frames must be visibly different",
         "no impact effects, no motion lines"
       ]
     },
     {
       "name": "attack-heavy",
       "row": 6,
-      "frames": 8,
+      "frames": 4,
       "fps": 24,
-      "action": "smooth 8-frame heavy straight power punch: frames 1-2 deep torso twist and rear arm wind-up behind shoulder, frame 3 explosive forward lunge torso rotation, frames 4-5 full extended heavy power punch with forward shoulder drive, frames 6-7 follow-through recovery, frame 8 return to guard",
+      "action": "heavy overhand punch: big wind-up, full body rotation, arm swung down and forward, recovery",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "the striking fist reaches maximum forward extension on frames 4 and 5",
-        "the body axis and both feet stay on the same ground line in every frame",
+        "the striking hand is furthest forward and lowest on frame 3 of 4",
+        "the body axis and both feet stay in the same place in every frame",
         "no impact effects, no motion lines, no comic symbols"
       ]
     },
     {
       "name": "kick",
       "row": 7,
-      "frames": 8,
+      "frames": 4,
       "fps": 24,
-      "action": "smooth 8-frame high side kick: frame 1 weight shift to support leg, frame 2 knee chambered high at waist, frame 3 leg snapping out, frames 4-5 full high kick extension forward with toe pointed, frames 6-7 rechambering knee and lowering leg, frame 8 foot planted back in stance",
+      "action": "front kick: chamber the knee, extend the leg forward at hip height, retract back to stance",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "the kicking foot is furthest forward on frames 4 and 5",
+        "the kicking foot is furthest forward on frame 3 of 4",
         "the supporting foot stays on the same ground line in every frame",
         "no impact effects, no motion lines"
       ]
@@ -111,24 +109,86 @@
     {
       "name": "hurt",
       "row": 8,
-      "frames": 8,
+      "frames": 3,
       "fps": 20,
-      "action": "smooth 8-frame hit stagger reaction: frame 1 impact jolt, frames 2-4 head and upper torso recoiling backward with arms flung wide, frames 5-6 peak recoil stagger, frames 7-8 regaining balance back toward guard",
+      "action": "taking a hit: head snapped back, torso leaning away, arms loose, then settling",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
         "same facing right, feet near the same ground line",
         "no blood, no impact sparks, no detached effects"
       ]
     },
     {
-      "name": "super-cast",
+      "name": "hurt-air",
       "row": 9,
-      "frames": 8,
-      "fps": 14,
-      "action": "smooth 8-frame magical idol super move summoning sequence: gathering energy at chest, raising star wand high toward the sky, summoning candy rain, returning to stance",
+      "frames": 3,
+      "fps": 18,
+      "action": "hit in mid air: the body arches backwards away from the direction the character faces, head and shoulders thrown back, arms trailing behind, legs swinging forward",
       "requirements": [
-        "all 8 frames in one single horizontal row from left to right with equal spacing",
-        "feet stay planted on the same ground line"
+        "the torso leans backwards, never forwards",
+        "the character is clearly airborne, feet off any ground line",
+        "keep the same character, palette and outline",
+        "no blood, no impact sparks, no detached effects"
+      ]
+    },
+    {
+      "name": "attack-air",
+      "row": 10,
+      "frames": 4,
+      "fps": 24,
+      "action": "airborne upright punch: the character hangs vertically in the air, tall silhouette like the idle pose, feet dangling below the hips, and throws one straight punch upward above the head",
+      "requirements": [
+        "tall vertical silhouette in every frame: head at the top, feet at the bottom, never lying down, never diving, never horizontal",
+        "the punching arm extends straight up above the head by frame 3 of 4",
+        "the legs hang relaxed below the body, feet never pointed at the camera",
+        "clearly airborne with no ground line",
+        "no impact effects, no motion lines"
+      ]
+    },
+    {
+      "name": "jump-fall",
+      "row": 11,
+      "frames": 2,
+      "fps": 10,
+      "action": "airborne falling: legs trailing down, arms out for balance, body upright",
+      "requirements": [
+        "clearly airborne, no ground contact",
+        "same character, palette and outline"
+      ]
+    },
+    {
+      "name": "land",
+      "row": 12,
+      "frames": 2,
+      "fps": 16,
+      "action": "landing recovery: knees bent absorbing the impact, arms lowered, then starting to rise",
+      "requirements": [
+        "feet planted on the same invisible baseline",
+        "no dust, no impact marks, no shadow"
+      ]
+    },
+    {
+      "name": "item-hold",
+      "row": 13,
+      "frames": 2,
+      "fps": 8,
+      "action": "standing guard while holding a small item in one hand at chest height, the other hand still in a loose fist, subtle breathing",
+      "requirements": [
+        "the hand grips a small generic item, keep the grip closed and the arm bent",
+        "the same body height, head size and ground line as the idle pose",
+        "first and last frame nearly identical so the loop does not pop"
+      ]
+    },
+    {
+      "name": "item-swing",
+      "row": 14,
+      "frames": 4,
+      "fps": 24,
+      "action": "swinging a held item forward: wind up behind the shoulder, arm sweeps through in front of the chest, follow through, recover to guard",
+      "requirements": [
+        "the hand keeps the closed grip on the item the whole time",
+        "the striking point is furthest forward on frame 3 of 4",
+        "same body height, head size and ground line as the idle pose",
+        "no impact effects, no motion lines"
       ]
     }
   ]

@@ -45,7 +45,6 @@ art-src/*/spritesheet.webp.import
 art-src/*/spritesheet.png
 art-src/*/spritesheet.png.import
 art-src/*/atlas.json
-art-src/*/*.import
 
 # Local screenshot / probe scratch
 shots/
